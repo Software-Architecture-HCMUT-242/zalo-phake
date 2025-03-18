@@ -1,0 +1,50 @@
+{
+  "family": "zalo-phake-be-task",
+  "containerDefinitions": [
+    {
+      "name": "python-app",
+      "image": "python:3.9-alpine",
+      "cpu": 128,
+      "memory": 256,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "hostPort": 5000,
+          "protocol": "tcp"
+        }
+      ],
+      "command": ["flask", "--app", "main", "run"],
+      "environment": [
+        {
+          "name": "FLASK_APP",
+          "value": "app.py"
+        },
+        {
+          "name": "FLASK_RUN_HOST",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "FLASK_ENV",
+          "value": "production"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/zalo-phake-be-task",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::249720777545:role/Execution-ECS",
+  "taskRoleArn": "arn:aws:iam::249720777545:role/Execution-ECS"
+}

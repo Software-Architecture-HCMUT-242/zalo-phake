@@ -14,3 +14,5 @@ build/
 *.egg-info/
 
 *chat_app/app/firebase_key/*.json
+
+.idea/*

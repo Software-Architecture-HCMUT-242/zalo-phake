@@ -9,4 +9,4 @@ COPY /app/ .
 
 EXPOSE 5000
 
-CMD ["flask", "--app", "hello", "run", "--host=0.0.0.0"]
+CMD ["flask", "--app", "main", "run"]
