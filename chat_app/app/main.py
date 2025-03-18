@@ -2,6 +2,11 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+
+@app.route("/", methods=["GET"])
+def ping():
+    return jsonify({"pong": True}), 200
+
 def validate(body, key, type_origin, type_convert, error, required=False):
     # [1]: Check if body has key
     if (key not in body) and required:
