@@ -1,10 +1,16 @@
+import sys
+import os
 import firebase_admin
 from firebase_admin import credentials
+
 
 class DB:
     def __init__(self):
         print("DB.__init__() called")
-        self.cred = credentials.Certificate("firebase_key/zalophake-bf746-firebase-adminsdk-fbsvc-61c19da529.json")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        firebase_key_dir = os.path.join(current_dir, "firebase_key")
+        key_path = os.path.join(firebase_key_dir, "zalophake.json")
+        self.cred = credentials.Certificate(key_path)
         self.app = firebase_admin.initialize_app(self.cred)
         print(self.app.name)
         return
