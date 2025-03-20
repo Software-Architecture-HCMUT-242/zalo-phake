@@ -1,5 +1,7 @@
+from service_env import Environment
 from typing import Union
 import os
+from phone_utils import isVietnamesePhoneNumber
 
 from fastapi import FastAPI, Query
 from datetime import datetime, timezone
@@ -7,11 +9,30 @@ from functools import wraps
 import jwt
 
 from fastapi import Depends, HTTPException, Request
+from pydantic_settings import BaseSettings
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+
+logger = logging.getLogger(__name__)
+
+
+
+class Settings(BaseSettings):
+    path_prefix: str = ''
+    fastapi_secret_key: str = '1234567890'
 
 app = FastAPI()
+settings = Settings(BaseSettings)
 
-PATH_PREFIX = os.getenv('PATH_PREFIX', '')
+
+PATH_PREFIX = settings.path_prefix
 API_VERSION = '/api/v1'
 if not PATH_PREFIX.startswith('/'):
     PATH_PREFIX = f'/{PATH_PREFIX}'
@@ -24,9 +45,17 @@ security = HTTPBearer()
 
 def token_required(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
+    if Environment.is_dev_environment():
+        logger.info(f"Token: {token}")
+        
+    if Environment.is_dev_environment():
+        if not isVietnamesePhoneNumber(token):
+            raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
+        return
+    
     try:
         # You'll need to set up your secret key and implement proper JWT validation
-        jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
+        jwt.decode(token, settings.fastapi_secret_key, algorithms=['HS256'])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError:
