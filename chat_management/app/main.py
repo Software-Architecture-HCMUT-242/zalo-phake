@@ -2,8 +2,10 @@ from flask import request, jsonify, Flask
 from datetime import datetime, timezone
 from functools import wraps
 import jwt
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app, supports_credentials=True)
 
 PREFIX = '/api/v1'
 
