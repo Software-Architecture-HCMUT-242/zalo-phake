@@ -15,24 +15,15 @@
         }
       ],
       "command": [
-        "flask",
-        "--app",
-        "main",
-        "run"
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5000"
       ],
       "environment": [
-        {
-          "name": "FLASK_APP",
-          "value": "app.py"
-        },
-        {
-          "name": "FLASK_RUN_HOST",
-          "value": "0.0.0.0"
-        },
-        {
-          "name": "FLASK_ENV",
-          "value": "production"
-        }
+        
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

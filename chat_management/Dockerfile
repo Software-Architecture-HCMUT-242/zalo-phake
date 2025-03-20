@@ -9,4 +9,4 @@ COPY /app/ .
 
 EXPOSE 5000
 
-CMD ["flask", "--app", "main", "run"]
+CMD ["uvicorn", "main:app", "--port", "8000", "--log-config", "conf/log_conf.yaml", "--host","0.0.0.0", "--reload"]

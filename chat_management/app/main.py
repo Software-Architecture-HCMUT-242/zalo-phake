@@ -1,75 +1,81 @@
-from flask import request, jsonify, Flask
+from typing import Union
+import os
+
+from fastapi import FastAPI, Query
 from datetime import datetime, timezone
 from functools import wraps
 import jwt
-from flask_cors import CORS
 
-app = Flask(__name__)
-CORS(app, supports_credentials=True)
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-PREFIX = '/api/v1'
+app = FastAPI()
+
+PATH_PREFIX = os.getenv('PATH_PREFIX', '')
+API_VERSION = '/api/v1'
+if not PATH_PREFIX.startswith('/'):
+    PATH_PREFIX = f'/{PATH_PREFIX}'
+if PATH_PREFIX.endswith('/'):
+    PATH_PREFIX = PATH_PREFIX.rstrip('/')
+PREFIX = f'{PATH_PREFIX}{API_VERSION}'
 
 
-@app.route("/", methods=["GET"])
-def ping():
-    return jsonify({"pong": True}), 200
+security = HTTPBearer()
 
+def token_required(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        # You'll need to set up your secret key and implement proper JWT validation
+        jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token is invalid")
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization')
-        if not token or not token.startswith('Bearer '):
-            return jsonify({'message': 'Token is missing or invalid'}), 401
-        
-        try:
-            token = token.split(' ')[1]
-            # You'll need to set up your secret key and implement proper JWT validation
-            jwt.decode(token, 'your-secret-key', algorithms=['HS256'])
-        except:
-            return jsonify({'message': 'Token is invalid'}), 401
-        
-        return f(*args, **kwargs)
-    return decorated
+@app.get(f'{PREFIX}/chats', dependencies=[Depends(token_required)])
+async def get_chats():
+    # Mock data for testing
+    chats = [
+        {
+            'id': 1,
+            'participant': 'user1',
+            'created_at': '2023-07-20T10:00:00Z',
+            'last_message': 'Hello there!'
+        },
+        {
+            'id': 2, 
+            'participant': 'user2',
+            'created_at': '2023-07-20T11:00:00Z',
+            'last_message': 'How are you?'
+        }
+    ]
+    return {'chats': chats}
 
-@app.route(f'{PREFIX}/chats', methods=['GET'])
-@token_required
-def get_chats():
-    # Implementation would fetch chats from your database
-    chats = []  # Replace with actual database query
-    return jsonify({'chats': chats})
-
-@app.route(f'{PREFIX}/chats', methods=['POST'])
-@token_required
-def create_chat():
-    data = request.get_json()
+@app.post(f'{PREFIX}/chats', dependencies=[Depends(token_required)])
+async def create_chat(request: Request):
+    data = await request.json()
     participant = data.get('participant')
     
     if not participant:
-        return jsonify({'message': 'Participant is required'}), 400
+        raise HTTPException(status_code=400, detail="Participant is required")
         
     # Implementation would create chat in your database
     chat = {}  # Replace with actual chat creation
-    return jsonify({'chat': chat}), 201
+    return {'chat': chat}
 
-@app.route(f'{PREFIX}/chats/messages', methods=['GET'])
-@token_required
-def get_messages():
-    limit = request.args.get('limit', type=int)
-    before = request.args.get('before')  # timestamp
-    
+@app.get(f'{PREFIX}/chats/messages', dependencies=[Depends(token_required)])
+async def get_messages(limit: int = Query(None), before: str = Query(None)):
     # Implementation would fetch messages from your database
     messages = []  # Replace with actual database query
-    return jsonify({'messages': messages})
+    return {'messages': messages}
 
-@app.route(f'{PREFIX}/chats/messages', methods=['POST'])
-@token_required
-def send_message():
-    data = request.get_json()
+@app.post(f'{PREFIX}/chats/messages', dependencies=[Depends(token_required)])
+async def send_message(request: Request):
+    data = await request.json()
     content = data.get('content')
     
     if not content:
-        return jsonify({'message': 'Content is required'}), 400
+        raise HTTPException(status_code=400, detail="Content is required")
         
     # Implementation would save message to your database
     message = {
@@ -77,9 +83,6 @@ def send_message():
         'timestamp': datetime.now(timezone.utc).isoformat(),
         # Add other message properties
     }
-    return jsonify({'message': message}), 201
+    return {'message': message}, 201
 
 
-
-if __name__ == '__main__':
-    app.run(debug=True)
