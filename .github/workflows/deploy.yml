@@ -13,22 +13,89 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: 'Select service'
+        required: true
+        default: 'user_task'
+        type: choice
+        options:
+          - user_task
+          - chat_task
 
 env:
   AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: software-architecture-course
-  ECS_SERVICE: zalo-phake-be-srv
+  ECS_USER_SERVICE: zalo-phake-user-be-srv
+  ECS_CHAT_SERVICE: zalo-phake-chat-be-srv
   ECS_CLUSTER: zalo-phake-course
-  ECS_TASK_DEFINITION: deployments/task-definition.json
+  ECS_USER_TASK_DEFINITION: chat_app/deployments/task-definition.json
+  ECS_CHAT_TASK_DEFINITION: chat_management/deployments/task-definition.json
+  USER_DOCKERFILE: ./chat_app
+  CHAT_DOCKERFILE: ./chat_management
 
-  CONTAINER_NAME: python-app
+  USER_CONTAINER_NAME: zalo-phake-user-be
+  CHAT_CONTAINER_NAME: zalo-phake-chat-be
 
 
 jobs:
+  wait_for_approval:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    outputs:
+      ecs_service: ${{ steps.set_ecs_config.outputs.ecs_service }}
+      ecs_task_definition: ${{ steps.set_ecs_config.outputs.ecs_task_definition }}
+      dockerfile: ${{ steps.set_ecs_config.outputs.dockerfile }}
+      container_name: ${{ steps.set_ecs_config.outputs.container_name }}
+    steps:
+      - name: Selection service
+        uses: trstringer/manual-approval@51b76c4576aad25fefe130f04f4cc4de75814e94
+        if: github.event_name == 'push'
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ github.actor }}
+          minimum-approvals: 1
+          issue-title: "Deployment approval needed"
+          issue-body: |
+            Approval is required for deploying ${{ github.ref }}.
+            Please comment 'approve' along with your desired configuration:
+            - For user_task: 'user_task'
+            - For chat_task: 'chat_task'
+          exclude-workflow-initiator-as-approver: false
+          additional-approved-words: 'user_task, chat_task'
+
+      - name: Set ECS Configuration
+        id: set_ecs_config
+        run: |
+          # For push events, default to user_task after approval
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "ecs_service=${{ env.ECS_USER_SERVICE }}" >> $GITHUB_OUTPUT
+            echo "ecs_task_definition=${{ env.ECS_USER_TASK_DEFINITION }}" >> $GITHUB_OUTPUT
+            echo "dockerfile=${{ env.USER_DOCKERFILE }}" >> $GITHUB_OUTPUT
+            echo "container_name=${{ env.USER_CONTAINER_NAME }}" >> $GITHUB_OUTPUT
+          else
+            # For workflow_dispatch, use the input
+            if [[ "${{ github.event.inputs.deployment_target }}" == "user_task" ]]; then
+              echo "ecs_service=${{ env.ECS_USER_SERVICE }}" >> $GITHUB_OUTPUT
+              echo "ecs_task_definition=${{ env.ECS_USER_TASK_DEFINITION }}" >> $GITHUB_OUTPUT
+              echo "dockerfile=${{ env.USER_DOCKERFILE }}" >> $GITHUB_OUTPUT
+              echo "container_name=${{ env.USER_CONTAINER_NAME }}" >> $GITHUB_OUTPUT
+            else
+              echo "ecs_service=${{ env.ECS_CHAT_SERVICE }}" >> $GITHUB_OUTPUT
+              echo "ecs_task_definition=${{ env.ECS_CHAT_TASK_DEFINITION }}" >> $GITHUB_OUTPUT
+              echo "dockerfile=${{ env.CHAT_DOCKERFILE }}" >> $GITHUB_OUTPUT
+              echo "container_name=${{ env.CHAT_CONTAINER_NAME }}" >> $GITHUB_OUTPUT
+            fi
+          fi
+
   deploy:
+    needs: wait_for_approval
     name: Deploy
     runs-on: ubuntu-latest
     environment: production
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.wait_for_approval.result == 'success')
 
     steps:
       - name: Checkout
@@ -54,7 +121,7 @@ jobs:
           # Build a docker container and
           # push it to ECR so that it can
           # be deployed to ECS.
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./chat_app
+          DOCKER_BUILDKIT=0 docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ${{ needs.wait_for_approval.outputs.dockerfile }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
@@ -62,14 +129,14 @@ jobs:
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
-          container-name: ${{ env.CONTAINER_NAME }}
+          task-definition: ${{ needs.wait_for_approval.outputs.ecs_task_definition }}
+          container-name: ${{ needs.wait_for_approval.outputs.container_name }}
           image: ${{ steps.build-image.outputs.image }}
 
       - name: Deploy Amazon ECS task definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
+          service: ${{ needs.wait_for_approval.outputs.ecs_service }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true

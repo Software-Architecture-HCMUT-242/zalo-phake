@@ -1,8 +1,8 @@
 {
-  "family": "zalo-phake-be-task",
+  "family": "zalo-phake-chat-be-task",
   "containerDefinitions": [
     {
-      "name": "python-app",
+      "name": "zalo-phake-chat-be",
       "image": "python:3.9-alpine",
       "cpu": 128,
       "memory": 256,
@@ -14,7 +14,12 @@
           "protocol": "tcp"
         }
       ],
-      "command": ["flask", "--app", "main", "run"],
+      "command": [
+        "flask",
+        "--app",
+        "main",
+        "run"
+      ],
       "environment": [
         {
           "name": "FLASK_APP",

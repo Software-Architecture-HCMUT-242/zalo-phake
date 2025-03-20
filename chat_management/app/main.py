@@ -8,6 +8,11 @@ app = Flask(__name__)
 PREFIX = '/api/v1'
 
 
+@app.route("/", methods=["GET"])
+def ping():
+    return jsonify({"pong": True}), 200
+
+
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
