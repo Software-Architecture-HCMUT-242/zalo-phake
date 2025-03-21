@@ -33,6 +33,8 @@ if PATH_PREFIX.endswith('/'):
     PATH_PREFIX = PATH_PREFIX.rstrip('/')
 PREFIX = f'{PATH_PREFIX}{API_VERSION}'
 
+logger.info(f"Start HTTP server with prefix: {PREFIX}")
+
 app = FastAPI(root_path=PREFIX)
 app.include_router(chats.router)
 app.include_router(messages.router)

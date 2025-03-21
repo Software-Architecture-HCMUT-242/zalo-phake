@@ -20,13 +20,12 @@
         "--host",
         "0.0.0.0",
         "--port",
-        "5000"
+        "5000",
+        "--log-config",
+        "conf/log_conf.yaml"
       ],
       "environment": [
-        {
-          "name": "PATH_PREFIX",
-          "value": "chat-management"
-        }
+        
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
