@@ -1,3 +1,4 @@
 fastapi[all]
 uvicorn[standard]
 PyJWT==2.10.1
+pydantic-settings
