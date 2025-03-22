@@ -2,3 +2,6 @@ fastapi[all]
 uvicorn[standard]
 PyJWT==2.10.1
 pydantic-settings
+Faker
+boto3
+fastapi-pagination

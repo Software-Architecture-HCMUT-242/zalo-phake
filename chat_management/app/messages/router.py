@@ -1,18 +1,23 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from ..dependencies import token_required
+from ..mock import random_message
+import random
+# import all you need from fastapi-pagination
+from fastapi_pagination import Page, add_pagination, paginate
+from .schemas import Message
 
 router = APIRouter(
     dependencies=[Depends(token_required)],
 )
 
-@router.get(f'/chats/messages', )
-async def get_messages(limit: int = Query(None), before: str = Query(None)):
-    # Implementation would fetch messages from your database
-    messages = []  # Replace with actual database query
-    return {'messages': messages}
+@router.get('/chats/{chat_id}/messages', response_model=Page[Message])
+async def get_messages(chat_id: str,):
+    # get messages from database with chat_id
+    messages = [random_message() for _ in range(random.randint(50, 200))]
+    return paginate(messages)
 
-@router.post(f'/chats/messages', dependencies=[Depends(token_required)])
+@router.post(f'/chats/messages', )
 async def send_message(request: Request):
     data = await request.json()
     content = data.get('content')
