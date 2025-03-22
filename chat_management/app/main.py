@@ -15,6 +15,7 @@ import logging
 from app.config import settings
 from .messages.router import router as messages_router
 from .chats.router import router as chats_router
+import uvicorn
 # import all you need from fastapi-pagination
 from fastapi_pagination import Page, add_pagination, paginate
 

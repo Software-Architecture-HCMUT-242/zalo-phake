@@ -2,13 +2,14 @@ version: 1
 disable_existing_loggers: False
 formatters:
   default:
-    # "()": uvicorn.logging.DefaultFormatter
-    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    use_colors: true
+    "()": uvicorn.logging.ColourizedFormatter
+    fmt: "{asctime} {levelprefix} {name}: {message}"
+    use_colors: True
+    style: "{"
   access:
-    # "()": uvicorn.logging.AccessFormatter
-    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    use_colors: true
+    "()": uvicorn.logging.AccessFormatter
+    fmt: '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    use_colors: True
 handlers:
   default:
     formatter: default
