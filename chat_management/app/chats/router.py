@@ -1,28 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from ..dependencies import token_required
-
+from ..mock import random_chat
+import random
+from typing import List
+from .schemas import Chat
+from fastapi_pagination import Page, add_pagination, paginate
 router = APIRouter(
     dependencies=[Depends(token_required)],
 )
 
-@router.get(f'/chats',)
+@router.get(f'/chats', response_model=Page[Chat])
 async def get_chats():
     # Mock data for testing
-    chats = [
-        {
-            'id': 1,
-            'participant': 'user1',
-            'created_at': '2023-07-20T10:00:00Z',
-            'last_message': 'Hello there!'
-        },
-        {
-            'id': 2, 
-            'participant': 'user2',
-            'created_at': '2023-07-20T11:00:00Z',
-            'last_message': 'How are you?'
-        }
-    ]
-    return {'chats': chats}
+    chats = [random_chat() for _ in range(random.randint(50, 200))]
+    return paginate(chats)
 
 
 @router.post(f'/chats',)
