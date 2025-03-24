@@ -1,16 +1,12 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, RootModel
 from firebase import FirebaseDB
 from copy import deepcopy
+from typing import Dict, Any
 
 database = FirebaseDB()
 database.connect()
-app = Flask(__name__)
-CORS(app, supports_credentials=True)
-
-@app.route("/", methods=["GET"])
-def ping():
-    return jsonify({"pong": True}), 200
+app = FastAPI()
 
 def validate(body, key, type_origin, type_convert, error, required=False):
     # [1]: Check if body has key
@@ -34,58 +30,51 @@ def validate(body, key, type_origin, type_convert, error, required=False):
         return False
     return True
 
-
-@app.route("/api/auth/login", methods=["POST"])
-def login():
-    vRequest = deepcopy(request.json)
-    vData = deepcopy(request.json)
+# FastAPI route for login
+@app.post("/api/auth/login")
+async def login(request: Dict[Any, Any]):
+    vData = deepcopy(request)  # Convert Pydantic model to dictionary
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True): return jsonify({"error": vError["description"]}), 400
-    if not validate(vData, "password",     str, str, vError, required=True): return jsonify({"error": vError["description"]}), 400
+    if not validate(vData, "phone_number", str, int, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "password"    , str, str, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
     print(f"[Debug]: Converted data:\n {vData}")
     
-    #TODO: Query firebase, return real token and User ID
-    return jsonify({"token": "1234", "user": "defaultUser", "success": True}), 200
+    # Return successful response
+    return {"success": True, "token": "1234", "user": "defaultUser"}
 
-@app.route("/api/auth/register", methods=["POST"])
-def register():
-    vRequest = deepcopy(request.json)
-    vData = deepcopy(request.json)
+@app.post("/api/auth/register")
+async def register(request: Dict[Any, Any]):
+    vData = deepcopy(request)
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True): return jsonify({"error": vError["description"]}), 400
-    if not validate(vData, "name",         str, str, vError, required=True): return jsonify({"error": vError["description"]}), 400
-    if not validate(vData, "password",     str, str, vError, required=True): return jsonify({"error": vError["description"]}), 400
-    if not validate(vData, "otp",          str, int, vError, required=True): return jsonify({"error": vError["description"]}), 400
+    if not validate(vData, "phone_number", str, int, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "name",         str, str, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "password",     str, str, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "otp",          str, int, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
     print(f"[Debug]: Converted data:\n {vData}")
     
     # [2]: Check if user exist in DB
     vResponse = {}
-    database.query(f"/User/{vRequest["phone_number"]}", response=vResponse)
+    database.query(f"/User/{request["phone_number"]}", response=vResponse)
     print(f"[Debug] The response data is: {vResponse}")
     if vResponse["body"]:
-        # [2.1]: Validate user data
-        print("[Debug] User found in database, validating...")
-        if not validate(vResponse["body"], "name",         str, str, vError, required=True): return jsonify({"error": "[Error]: Databse error"}), 400
-        if not validate(vResponse["body"], "password",     str, str, vError, required=True): return jsonify({"error": "[Error]: Databse error"}), 400
         print(f"[Debug] User already exist in database: {vResponse["body"]}")
-        return jsonify({"error": "[Error]: User already exist"}), 400
+        raise HTTPException(status_code=400, detail="[Error]: User already exist in database")
     #TODO: Add to firebase, return real token and User ID
-    return jsonify({"token": "1234", "user": "defaultUser", "success": True}), 200
+    return {"success": True, "token": "1234", "user": "defaultUser"}
 
-@app.route("/api/auth/send-otp", methods=["POST"])
-def send_otp():
-    vRequest = deepcopy(request.json)
-    vData = deepcopy(request.json)
+@app.post("/api/auth/send-otp")
+async def send_otp(request: Dict[Any, Any]):
+    vData = deepcopy(request)
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True): return jsonify({"error": vError["description"]}), 400
+    if not validate(vData, "phone_number", str, int, vError, required=True): raise HTTPException(status_code=400, detail=vError["description"])
     print(f"[Debug]: Converted data:\n {vData}")
     
     # [2]: Check if user exist in DB
     vResponse = {}
-    database.query(f"/User/{vRequest["phone_number"]}", response=vResponse)
+    database.query(f"/User/{request["phone_number"]}", response=vResponse)
     print(f"[Debug] The response data is: {vResponse}")
     if not vResponse["body"]:
         print("[Debug] User not found in database, sending OTP")
@@ -93,23 +82,11 @@ def send_otp():
         # store {"OTP": "token"} in database /OTP
         # wait until receive register
         # delete otp, send message back
-        return jsonify({"success": False}), 200
+        return {"success": False}
     
     # [3]: Validate user data
     print("[Debug] User found in database, validating...")
-    if not validate(vResponse["body"], "name",         str, str, vError, required=True): return jsonify({"error": "[Error]: Databse error"}), 400
-    if not validate(vResponse["body"], "password",     str, str, vError, required=True): return jsonify({"error": "[Error]: Databse error"}), 400
+    if not validate(vResponse["body"], "name",     str, str, vError, required=True): raise HTTPException(status_code=400, detail="[Error]: Database error")
+    if not validate(vResponse["body"], "password", str, str, vError, required=True): raise HTTPException(status_code=400, detail="[Error]: Database error")
     print("[Debug] User data is valid")
-    return jsonify({"success": True}), 200
-
-if __name__ == "__main__":
-    # db = FirebaseDB()
-    # db.connect()
-    # res = {}
-    # db.query("/User", response=res)
-    # print(res)
-    # db.query("/User/0908765432/name", response=res)
-    # db.insert("/User/0900000000", 123)
-    # print(res)
-
-    app.run(debug=True)
+    return {"success": True}
