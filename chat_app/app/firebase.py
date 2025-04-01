@@ -2,7 +2,8 @@ import os
 import typing
 import firebase_admin
 from firebase_admin import credentials, db
-from log import log
+import logging
+
 
 class FirebaseDB():
     def __init__(self):
@@ -36,7 +37,7 @@ class FirebaseDB():
         self.ref = None
         print("Disconnected from Firebase Realtime Database")
         return
-    
+
     def insert(self, path: str, data: typing.Any) -> bool:
         # Insert data into Firebase path
         print(f"[Debug] Firebase insert \"{data}\" to \"{path}\"")

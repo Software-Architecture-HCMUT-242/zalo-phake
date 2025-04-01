@@ -31,6 +31,7 @@ env:
   ECS_CHAT_SERVICE: zalo-phake-chat-be-srv
   ECS_CLUSTER: zalo-phake-course
   ECS_USER_TASK_DEFINITION: chat_app/deployments/task-definition.json
+  FIREBASE_SECRET_CREDENTIALS: ./chat_app/app/firebase_key/zalophake.json
   ECS_CHAT_TASK_DEFINITION: chat_management/deployments/task-definition.json
   USER_DOCKERFILE: ./chat_app
   CHAT_DOCKERFILE: ./chat_management
@@ -111,6 +112,17 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Get Firebase credentials from AWS Secrets Manager
+        id: firebase-credentials
+        env:
+          FIREBASE_SECRET: ${{ secrets.FIREBASE_SECRET }}
+        run: |
+          echo "$FIREBASE_SECRET" > ${{ env.FIREBASE_SECRET_CREDENTIALS }}
+
+      - name: Cat firebase-credentials.json
+        run: |
+          cat ${{ env.FIREBASE_SECRET_CREDENTIALS }}
 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
