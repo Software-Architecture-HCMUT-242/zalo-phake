@@ -2,6 +2,7 @@ import os
 import typing
 import firebase_admin
 from firebase_admin import credentials, db
+from log import log
 
 class FirebaseDB():
     def __init__(self):
