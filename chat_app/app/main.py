@@ -11,8 +11,8 @@ app = FastAPI()
 
 
 @app.get("/")
-async def ping(request: Dict[Any, Any]):
-    return {"pong": True}
+def ping():
+    return {"message": "pong"}
 
 
 def validate(body, key, type_origin, type_convert, error, required=False):
