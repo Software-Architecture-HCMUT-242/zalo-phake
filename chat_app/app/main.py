@@ -52,22 +52,21 @@ async def register(request: Dict[Any, Any]):
     log(f"[Debug]: Converted data:\n {vData}")
 
     # [2]: Check if user exist in DB
-    vResponse = {}
-    database.query(f'/User/{request["phone_number"]}', response=vResponse)
-    log(f"[Debug] The response data is: {vResponse}")
-    if vResponse["body"]:
-        log(f'[Debug] User already exist in database: {vResponse["body"]}')
+    user = database.query_user_by_phone_number(request["phone_number"])
+    log(f"[Debug] Queried user is: {user}")
+    if user:
+        log(f'[Error] User already exist in database')
         raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
 
     # [3]: Validate FE token from firebase OTP
     decoded_token = database.verify_token(request["token"])
     if not decoded_token:
-        log(f'[Debug] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [4]: Insert user to DB if not existed
-    database.insert(f'/User/{request["phone_number"]}', {"name": request["name"], "password": request["password"]})
-    return {"success": True, "token": "1234", "user": "defaultUser"}
+    user = database.create_user(phone_number=request["phone_number"], password=request["password"])
+    return {"success": True, "token": "1234", "user": user}
 
 
 @app.post("/api/auth/login", status_code=200)
@@ -82,35 +81,34 @@ async def login(request: Dict[Any, Any]):
     log(f"[Debug]: Converted data:\n {vData}")
 
     # [2]: Check if user exist in DB
-    vResponse = {}
-    database.query(f'/User/{request["phone_number"]}', response=vResponse)
-    log(f"[Debug] The response data is: {vResponse}")
-    if not vResponse["body"]:
+    user = database.query_user_by_phone_number(request["phone_number"])
+    log(f"[Debug] Queried user is: {user}")
+    if not user:
         log(f"[Debug] User phone number \"{request["phone_number"]}\" not found in database")
         # return obscured error info to make it harder to attack
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
     
     # [3]: Validate password
-    if vResponse["body"]["password"] != request["password"]:
-        log(f"[Debug] User password \"{request["password"]}\" not match database \"{vResponse["body"]["password"]}\"")
+    if user["password"] != request["password"]:
+        log(f"[Debug] User password \"{request["password"]}\" not match database \"{user["password"]}\"")
         # return obscured error info to make it harder to attack
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
-    # TODO: Get token from database
-    token = "1234"
-    return {"success": True, "token": token, "user": vResponse}
+    # BE doesn't need to send token back, only need to verify FE token
+    # FE refresh token is received directly from Firebase, invalid after logout
+    return {"success": True, "user": user}
 
 
-@app.post("/api/auth/logout", status_code=200)
-async def register(request: Dict[Any, Any]):
-    vData = deepcopy(request)
-    vError = {}
-    # [1]: Validate request body
-    if not validate(vData, "token", str, int, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+# @app.post("/api/auth/logout", status_code=200)
+# async def register(request: Dict[Any, Any]):
+#     vData = deepcopy(request)
+#     vError = {}
+#     # [1]: Validate request body
+#     if not validate(vData, "token", str, int, vError, required=True):
+#         raise HTTPException(status_code=400, detail=vError["description"])
+#     log(f"[Debug]: Converted data:\n {vData}")
 
-    # [2]: TODO validate token
+#     # [2]: TODO validate token
 
-    # [3]: Insert user to DB if not existed
-    return {"success": True}
+#     # [3]: Insert user to DB if not existed
+#     return {"success": True}

@@ -82,6 +82,9 @@ class FirebaseDB():
     def query_user_by_email(email):
         return auth.get_user_by_email(email)
     
+    def query_user_by_phone_number(phone):
+        return auth.get_user_by_phone_number(phone)
+    
     def verify_token(id_token):
         # Verify firebase token from FE
         try:
