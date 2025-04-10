@@ -6,16 +6,18 @@ import random
 # import all you need from fastapi-pagination
 from fastapi_pagination import Page, add_pagination, paginate
 from .schemas import Message
+from ..firebase import realtime_db, firestore_db, firebase_db
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     dependencies=[Depends(token_required)],
 )
 
 @router.get('/chats/{chat_id}/messages', response_model=Page[Message])
-async def get_messages(chat_id: str,):
-    # get messages from database with chat_id
-    messages = [random_message() for _ in range(random.randint(50, 200))]
-    return paginate(messages)
+async def get_messages(chat_id: str):
+    pass
 
 @router.post(f'/chats/messages', )
 async def send_message(request: Request):
