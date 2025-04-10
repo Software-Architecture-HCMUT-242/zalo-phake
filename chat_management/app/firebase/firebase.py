@@ -3,6 +3,7 @@ import typing
 import firebase_admin
 from firebase_admin import credentials, db, firestore
 import logging
+import json
 
 
 class FirebaseDB:
@@ -30,10 +31,14 @@ class FirebaseDB:
     
     def connect(self) -> None:
         # Initialize Firebase Admin SDK and set database reference
-        # Authenticate
-        self.cred = credentials.Certificate(self.cred_path)
-        self.app = firebase_admin.initialize_app(
-            self.cred, {"databaseURL": self.db_url}
+        # Authenticate using credentials from environment variable
+        cert_json = os.getenv("FIREBASE_SECRET")
+        if not cert_json:
+            raise ValueError("Environment variable FIREBASE_SECRET is not set")
+        cert_dict = json.loads(cert_json)
+        cred = credentials.Certificate(cert_dict)
+        self.app = firebase_admin.initialize_app(credential=cred,
+            options={"databaseURL": self.db_url}
         )
 
         # Get references to DB parent nodes
