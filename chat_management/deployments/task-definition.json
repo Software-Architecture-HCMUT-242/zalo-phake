@@ -15,14 +15,16 @@
         }
       ],
       "command": [
+        "python",
+        "-m",
         "uvicorn",
-        "main:app",
+        "app.main:app",
         "--host",
         "0.0.0.0",
         "--port",
         "5000",
         "--log-config",
-        "conf/log_conf.yaml"
+        "app/conf/log_conf.yaml"
       ],
       "environment": [
         
