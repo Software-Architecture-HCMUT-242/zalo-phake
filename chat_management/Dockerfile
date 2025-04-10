@@ -9,4 +9,4 @@ COPY ./app /code/app
 
 EXPOSE 5000
 
-CMD ["python", "-m", "uvicorn", "app.main:app", "--port", "8000", "--log-config", "app/conf/log_conf.yaml", "--host","0.0.0.0"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--port", "5000", "--log-config", "app/conf/log_conf.yaml", "--host","0.0.0.0"]
