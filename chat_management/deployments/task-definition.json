@@ -3,7 +3,7 @@
   "containerDefinitions": [
     {
       "name": "zalo-phake-chat-be",
-      "image": "python:3.9-alpine",
+      "image": "python:3.10-slim",
       "cpu": 128,
       "memory": 256,
       "essential": true,
