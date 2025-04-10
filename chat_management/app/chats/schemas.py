@@ -14,3 +14,11 @@ class GroupChat(Chat):
     admins: List[str]
     groupCreatedTime: datetime
     groupMembers: List[str]
+
+class CreateChatRequest(BaseModel):
+    participants: List[str]
+    initialMessage: str
+
+class CreateChatResponse(BaseModel):
+    chatId: str
+    createdTime: datetime
