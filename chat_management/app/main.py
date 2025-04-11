@@ -1,22 +1,13 @@
-from app.service_env import Environment
-from typing import Union
-import os
-from app.phone_utils import isVietnamesePhoneNumber
-
-from fastapi import FastAPI, Query
-from datetime import datetime, timezone
-from functools import wraps
-import jwt
-
-from fastapi import Depends, HTTPException, Request
-from pydantic_settings import BaseSettings
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
+import os
+
 from app.config import settings
-from .messages.router import router as messages_router
+from fastapi import FastAPI
+
 from .chats.router import router as chats_router
 from .groups.router import router as groups_router
-import uvicorn
+from .messages.router import router as messages_router
+
 # import all you need from fastapi-pagination
 
 logging.basicConfig(

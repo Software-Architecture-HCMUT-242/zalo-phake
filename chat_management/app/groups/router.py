@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from ..dependencies import AuthenticatedUser, get_current_active_user, token_required
-from typing import Annotated, List
-from .schemas import Group, GroupCreate, GroupUpdate
-from ..firebase import firestore_db
-from firebase_admin import firestore
-from firebase_admin.firestore import FieldFilter
-from datetime import datetime
-import uuid
 import logging
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from firebase_admin import firestore
+
+from .schemas import Group, GroupCreate, GroupUpdate
+from ..dependencies import AuthenticatedUser, get_current_active_user, token_required
+from ..firebase import firestore_db
 from ..time_utils import convert_timestamps
 
 logger = logging.getLogger(__name__)

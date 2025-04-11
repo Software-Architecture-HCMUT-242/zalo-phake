@@ -12,7 +12,7 @@ router = APIRouter(
     dependencies=[Depends(token_required)],
 )
 
-@router.get('/chats/{chat_id}/messages', response_model=Page[Message])
+@router.get('/chats/{chat_id}/messages',)
 async def get_messages(chat_id: str):
     pass
 
