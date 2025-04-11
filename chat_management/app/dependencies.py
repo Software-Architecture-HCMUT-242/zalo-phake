@@ -1,18 +1,13 @@
-from pydantic import BaseModel
-from app.service_env import Environment
-from typing import Annotated, Union
-import os
-from app.phone_utils import isVietnamesePhoneNumber
-
-from fastapi import FastAPI, Query
-from datetime import datetime, timezone
-from functools import wraps
-import jwt
-
-from fastapi import Depends, HTTPException
-from pydantic_settings import BaseSettings
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
+from typing import Annotated
+
+import jwt
+from app.phone_utils import isVietnamesePhoneNumber
+from app.service_env import Environment
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+
 from .config import settings
 
 logging.basicConfig(

@@ -1,17 +1,16 @@
+import logging
+import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request
-from ..dependencies import AuthenticatedUser, get_current_active_user, token_required
-from ..mock import random_chat
-import random
-from typing import Annotated, List
-from .schemas import Chat, CreateChatRequest, CreateChatResponse  # Import CreateChatRequest
-from ..pagination import common_pagination_parameters, PaginatedResponse, PaginationParams
-from ..firebase import firestore_db
 from firebase_admin import firestore
 from firebase_admin.firestore import FieldFilter
-from datetime import datetime, timezone
+
+from .schemas import Chat, CreateChatRequest, CreateChatResponse  # Import CreateChatRequest
+from ..dependencies import AuthenticatedUser, get_current_active_user, token_required
+from ..firebase import firestore_db
+from ..pagination import common_pagination_parameters, PaginatedResponse, PaginationParams
 from ..time_utils import convert_timestamps
-import uuid
-import logging
 
 logger = logging.getLogger(__name__)
 
