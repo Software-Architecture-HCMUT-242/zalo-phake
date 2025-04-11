@@ -1,7 +1,7 @@
 import logging
 import os
 
-from app.config import settings
+from app.config import settings, get_prefix
 from fastapi import FastAPI
 
 from .chats.router import router as chats_router
@@ -23,16 +23,8 @@ for key, value in os.environ.items():
 logger = logging.getLogger(__name__)
 
 
-def get_prefix(path_prefix: str, api_version: str) -> str:
-    if not path_prefix.startswith('/'):
-        path_prefix = f'/{path_prefix}'
-    if path_prefix.endswith('/'):
-        path_prefix = path_prefix.rstrip('/')
-    return f'{path_prefix}{api_version}'
-
-PATH_PREFIX = settings.path_prefix
 API_VERSION = '/api/v1'
-PREFIX = get_prefix(PATH_PREFIX, API_VERSION)
+PREFIX = get_prefix(API_VERSION)
 
 logger.info(f"Start HTTP server with prefix: {PREFIX}")
 
