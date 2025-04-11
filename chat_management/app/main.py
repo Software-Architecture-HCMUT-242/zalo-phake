@@ -15,6 +15,7 @@ import logging
 from app.config import settings
 from .messages.router import router as messages_router
 from .chats.router import router as chats_router
+from .groups.router import router as groups_router
 import uvicorn
 # import all you need from fastapi-pagination
 
@@ -47,3 +48,4 @@ logger.info(f"Start HTTP server with prefix: {PREFIX}")
 app = FastAPI(root_path=PREFIX)
 app.include_router(chats_router)
 app.include_router(messages_router)
+app.include_router(groups_router)

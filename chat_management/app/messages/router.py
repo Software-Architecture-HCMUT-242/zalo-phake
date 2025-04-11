@@ -1,13 +1,10 @@
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from ..dependencies import token_required
-from ..mock import random_message
-import random
-# import all you need from fastapi-pagination
-from fastapi_pagination import Page, add_pagination, paginate
-from .schemas import Message
-from ..firebase import realtime_db, firestore_db, firebase_db
 import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+from .schemas import Message
+from ..dependencies import token_required
 
 logger = logging.getLogger(__name__)
 
