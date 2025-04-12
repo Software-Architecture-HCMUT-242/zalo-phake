@@ -85,6 +85,9 @@ class FirebaseDB():
     def query_user_by_phone_number(phone):
         return auth.get_user_by_phone_number(phone)
     
+    def update_user(*args, **kwargs):
+        return auth.update_user(*args, **kwargs)
+
     def verify_token(id_token):
         # Verify firebase token from FE
         try:

@@ -66,7 +66,9 @@ async def register(request: Dict[Any, Any]):
         raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "name", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, str, vError, required=True): 
+    if not validate(vData, "password", str, str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "token", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
@@ -85,7 +87,7 @@ async def register(request: Dict[Any, Any]):
 
     # [4]: Insert user to DB if not existed
     user = database.create_user(phone_number=request["phone_number"], password=request["password"])
-    return {"success": True, "token": "1234", "user": user}
+    return {"success": True, "user": user}
 
 
 @app.post("/api/auth/login", status_code=200)
@@ -118,16 +120,60 @@ async def login(request: Dict[Any, Any]):
     return {"success": True, "user": user}
 
 
-# @app.post("/api/auth/logout", status_code=200)
-# async def register(request: Dict[Any, Any]):
-#     vData = deepcopy(request)
-#     vError = {}
-#     # [1]: Validate request body
-#     if not validate(vData, "token", str, int, vError, required=True):
-#         raise HTTPException(status_code=400, detail=vError["description"])
-#     log(f"[Debug]: Converted data:\n {vData}")
+@app.post("/api/auth/change-pass", status_code=200)
+async def change_pass(request: Dict[Any, Any]):
+    vData = deepcopy(request)
+    vError = {}
+    # [1]: Validate request body
+    if not validate(vData, "phone_number", str, int, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "old_password", str, str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "new_password", str, str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    log(f"[Debug]: Converted data:\n {vData}")
 
-#     # [2]: TODO validate token
+    # [2]: Check if user exist in DB
+    user = database.query_user_by_phone_number(request["phone_number"])
+    log(f"[Debug] Queried user is: {user}")
+    if not user:
+        log(f"[Debug] User phone number \"{request["phone_number"]}\" not found in database")
+        # return obscured error info to make it harder to attack
+        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
-#     # [3]: Insert user to DB if not existed
-#     return {"success": True}
+    # [3]: Update user's password
+    user = database.update_user(password=request["new_password"])
+    return {"success": True, "user": user}
+
+
+@app.post("/api/auth/forgot-pass", status_code=200)
+async def forgot_pass(request: Dict[Any, Any]):
+    vData = deepcopy(request)
+    vError = {}
+    # [1]: Validate request body
+    if not validate(vData, "phone_number", str, int, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "new_password", str, str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "token", str, str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    log(f"[Debug]: Converted data:\n {vData}")
+
+    # [2]: Check if user exist in DB
+    user = database.query_user_by_phone_number(request["phone_number"])
+    log(f"[Debug] Queried user is: {user}")
+    if not user:
+        log(f"[Debug] User phone number \"{request["phone_number"]}\" not found in database")
+        # return obscured error info to make it harder to attack
+        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+
+    # [3]: Validate FE token from firebase OTP
+    decoded_token = database.verify_token(request["token"])
+    if not decoded_token:
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    
+    # [4]: Update user's password
+    user = database.update_user(password=request["new_password"])
+    return {"success": True, "user": user}
+
