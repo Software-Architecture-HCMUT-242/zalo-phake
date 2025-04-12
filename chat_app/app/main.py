@@ -12,7 +12,7 @@ app = FastAPI()
 
 origins = [
     "http://localhost:5173",  # localhost of FE app
-    "https://FE-placeholder.com"  # placeholder for FE domain
+    "https://zalophake.me"  # placeholder for FE domain
 ]
 
 app.add_middleware(
