@@ -8,6 +8,7 @@ from .chats.router import router as chats_router
 from .groups.router import router as groups_router
 from .messages.router import router as messages_router
 from .notifications.router import router as notifications_router
+from .ws.router import router as ws_router
 
 # import all you need from fastapi-pagination
 
@@ -34,3 +35,4 @@ app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(groups_router)
 app.include_router(notifications_router)
+app.include_router(ws_router)

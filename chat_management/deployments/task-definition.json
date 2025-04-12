@@ -27,7 +27,26 @@
         "app/conf/log_conf.yaml"
       ],
       "environment": [
-        
+        {
+          "name": "AWS_REGION",
+          "value": "ap-southeast-1"
+        },
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "value": "${aws:accessKeyId}"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "value": "${aws:secretAccessKey}"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "ap-southeast-1"
+        },
+        {
+          "name": "SQS_URL",
+          "value": "https://sqs.ap-southeast-1.amazonaws.com/634776368936/phuoc-test-sqs"
+        }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",

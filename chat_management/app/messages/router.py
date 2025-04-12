@@ -1,18 +1,18 @@
-import asyncio
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from firebase_admin import firestore
 
 from .schemas import Message, MessageType
-from ..aws.client import SQSClient
+from ..aws import sqs_client
 from ..config import settings
 from ..dependencies import token_required, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
+from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
 
@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     dependencies=[Depends(token_required)],
 )
+
+notification_service = NotificationService()
 
 # Store active WebSocket connections
 active_connections: Dict[str, Dict[str, WebSocket]] = {}
@@ -121,81 +123,6 @@ async def mark_message_as_read(
 
     return {'status': 'success'}
 
-@router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """
-    WebSocket endpoint for real-time messaging
-    """
-    await websocket.accept()
-
-    # Initialize user's connections if not exists
-    if user_id not in active_connections:
-        active_connections[user_id] = {}
-
-    # Generate a connection ID for this specific connection
-    connection_id = str(uuid.uuid4())
-    active_connections[user_id][connection_id] = websocket
-
-    try:
-        # Update user status to online in Firestore
-        user_ref = firestore_db.collection('users').document(user_id)
-        user_ref.update({
-            'isOnline': True,
-            'lastActive': firestore.SERVER_TIMESTAMP
-        })
-
-        # Listen for messages from the client
-        while True:
-            data = await websocket.receive_text()
-            try:
-                message = json.loads(data)
-                event_type = message.get('event')
-
-                if event_type == 'typing':
-                    # User is typing in a chat
-                    chat_id = message.get('chatId')
-                    if chat_id:
-                        typing_event = {
-                            'event': 'typing',
-                            'chatId': chat_id,
-                            'userId': user_id
-                        }
-                        await broadcast_event(chat_id, typing_event, user_id)
-
-                elif event_type == 'heartbeat':
-                    # Update last active time for the user
-                    user_ref.update({
-                        'lastActive': firestore.SERVER_TIMESTAMP
-                    })
-                    await websocket.send_text(json.dumps({'event': 'heartbeat_ack'}))
-
-            except json.JSONDecodeError:
-                logger.error(f"Invalid JSON received from client: {data}")
-            except Exception as e:
-                logger.error(f"Error processing WebSocket message: {str(e)}")
-
-    except WebSocketDisconnect:
-        # Remove this connection
-        if user_id in active_connections and connection_id in active_connections[user_id]:
-            del active_connections[user_id][connection_id]
-
-            # If this was the last connection for this user, mark them as offline
-            if not active_connections[user_id]:
-                del active_connections[user_id]
-
-                # Update user status to offline with a delay
-                # This gives time for reconnection in case of network issues
-                try:
-                    await asyncio.sleep(60)  # 60-second grace period
-                    if user_id not in active_connections:
-                        user_ref = firestore_db.collection('users').document(user_id)
-                        user_ref.update({
-                            'isOnline': False,
-                            'lastActive': firestore.SERVER_TIMESTAMP
-                        })
-                except Exception as e:
-                    logger.error(f"Error updating offline status: {str(e)}")
-
 @router.post('/chats/{chat_id}/messages')
 async def send_message(
     chat_id: str,
@@ -262,7 +189,6 @@ async def send_message(
 
     # Send message to SQS for notification processing
     try:
-        sqs_client = SQSClient()
         sqs_client.send_message(
             queue_url=settings.aws_sqs_queue_url,
             message_body=sqs_message

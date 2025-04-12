@@ -1,4 +1,4 @@
-from app.firebase.firebase import FirebaseDB
+from .firebase import FirebaseDB
 from firebase_admin import db
 
 firebase_db = FirebaseDB()
