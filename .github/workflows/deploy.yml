@@ -119,7 +119,7 @@ jobs:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SECRET }}
         run: |
           echo "$FIREBASE_SECRET" > ${{ env.FIREBASE_SECRET_CREDENTIALS }}
-          sed -i "s/<firebase_secret>/$FIREBASE_SECRET/g" ${{ env.ECS_CHAT_TASK_DEFINITION }}
+          echo "$FIREBASE_SECRET" | sed -i "s|<firebase_secret>|$(cat)|g" ${{ env.ECS_CHAT_TASK_DEFINITION }}
 
       - name: Cat firebase-credentials.json
         run: |
