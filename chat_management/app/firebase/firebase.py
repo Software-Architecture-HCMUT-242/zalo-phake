@@ -1,9 +1,9 @@
+import json
 import os
 import typing
+
 import firebase_admin
 from firebase_admin import credentials, db, firestore
-import logging
-import json
 
 
 class FirebaseDB:

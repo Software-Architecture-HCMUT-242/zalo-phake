@@ -1,12 +1,14 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.service_env import Environment
-from app.phone_utils import isVietnamesePhoneNumber
+import asyncio
 import json
 import logging
-import asyncio
-from ..firebase import firestore_db
+
+from app.phone_utils import isVietnamesePhoneNumber
+from app.service_env import Environment
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from firebase_admin import firestore
+
 from .websocket_manager import ConnectionManager
+from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)
 

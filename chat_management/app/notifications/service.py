@@ -1,13 +1,15 @@
 import json
 import logging
-import boto3
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+
+import boto3
 from firebase_admin import messaging
 from firebase_admin.exceptions import FirebaseError
-from ..firebase import firestore_db
-from ..aws.config import settings
+
 from ..aws import sqs_client
+from ..aws.config import settings
+from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)
 

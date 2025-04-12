@@ -2,8 +2,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
-import asyncio
+from typing import Any, Dict, Optional
 
 from ..aws import sqs_client
 from ..aws.config import settings

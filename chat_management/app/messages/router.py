@@ -9,8 +9,6 @@ from firebase_admin import firestore
 from sqlalchemy.util import asyncio
 
 from .schemas import Message, MessageType
-from ..aws import sqs_client
-from ..aws.config import settings
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
 from ..dependencies import token_required, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
