@@ -46,6 +46,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint for monitoring and deployment verification
+    """
+    return {"status": "healthy", "version": "1.0.0"}
+
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(groups_router)
