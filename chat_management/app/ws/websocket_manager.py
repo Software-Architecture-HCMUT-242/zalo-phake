@@ -1,10 +1,12 @@
+import asyncio
 import json
 import logging
-import asyncio
-from typing import Dict, List, Optional, Set
-from fastapi import WebSocket, WebSocketDisconnect
 import uuid
+from typing import Dict, Optional, Set
+
+from fastapi import WebSocket
 from firebase_admin import firestore
+
 from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)

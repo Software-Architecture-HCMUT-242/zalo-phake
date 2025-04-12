@@ -1,6 +1,8 @@
-from pydantic import BaseModel
 from datetime import datetime
 from typing import List
+
+from pydantic import BaseModel
+
 
 class Chat(BaseModel):
     chatId: str

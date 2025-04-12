@@ -1,9 +1,9 @@
+import json
 import os
 import typing
+
 import firebase_admin
 from firebase_admin import credentials, db, firestore
-import logging
-import json
 
 
 class FirebaseDB:
@@ -36,6 +36,8 @@ class FirebaseDB:
         if not cert_json:
             raise ValueError("Environment variable FIREBASE_SECRET is not set")
         cert_dict = json.loads(cert_json)
+        if type(cert_dict) == str:
+            cert_dict = json.loads(cert_dict)
         cred = credentials.Certificate(cert_dict)
         self.app = firebase_admin.initialize_app(credential=cred,
             options={"databaseURL": self.db_url}

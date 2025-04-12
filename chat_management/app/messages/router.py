@@ -6,10 +6,10 @@ from typing import Dict, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from firebase_admin import firestore
+from sqlalchemy.util import asyncio
 
 from .schemas import Message, MessageType
-from ..aws import sqs_client
-from ..config import settings
+from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
 from ..dependencies import token_required, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
 from ..notifications.service import NotificationService
@@ -175,36 +175,60 @@ async def send_message(
         'lastMessagePreview': content[:50] + ('...' if len(content) > 50 else '')
     })
 
-    # Prepare message for SQS
-    sqs_message = {
-        'event': 'new_message',
-        'chatId': chat_id,
-        'messageId': message_id,
-        'senderId': current_user.phoneNumber,
-        'content': content,
-        'messageType': message_type,
-        'timestamp': now.isoformat(),
-        'participants': chat_data.get('participants', [])
-    }
-
-    # Send message to SQS for notification processing
-    try:
-        sqs_client.send_message(
-            queue_url=settings.aws_sqs_queue_url,
-            message_body=sqs_message
-        )
-    except Exception as e:
-        logger.error(f"Error sending message to SQS: {str(e)}")
-        # Continue even if SQS fails - the message is already stored
-
     # Send message via WebSocket to connected participants
     await broadcast_message(chat_id, message_id, current_user.phoneNumber, content, message_type)
+
+    # Send notification using SQS utils if available
+    participants = chat_data.get('participants', [])
+    notification_sent = False
+
+    if is_sqs_available():
+        try:
+            # Use the utility function to send notification through SQS
+            notification_sent = await send_chat_message_notification(
+                chat_id=chat_id,
+                message_id=message_id,
+                sender_id=current_user.phoneNumber,
+                content=content,
+                message_type=message_type,
+                participants=participants
+            )
+
+            if notification_sent:
+                logger.info(f"Notification for message {message_id} sent to SQS queue")
+            else:
+                logger.warning(f"Failed to send notification for message {message_id} to SQS queue")
+        except Exception as e:
+            logger.error(f"Error sending notification to SQS: {str(e)}")
+            notification_sent = False
+
+    # If SQS is not available or notification failed, try direct processing
+    # This ensures notifications work even if SQS is down
+    if not notification_sent:
+        logger.info("Using direct notification processing as fallback")
+        try:
+            # Prepare message for direct notification processing
+            notification_data = {
+                'event': 'new_message',
+                'chatId': chat_id,
+                'messageId': message_id,
+                'senderId': current_user.phoneNumber,
+                'content': content,
+                'messageType': message_type,
+                'timestamp': now.isoformat(),
+                'participants': participants
+            }
+
+            # Process notification directly (asynchronously)
+            asyncio.create_task(notification_service.process_new_message(notification_data))
+        except Exception as e:
+            logger.error(f"Error in direct notification processing: {str(e)}")
 
     return {
         'messageId': message_id,
         'timestamp': now.isoformat(),
         'status': 'sent'
-    }, 201
+    }
 
 async def broadcast_message(chat_id: str, message_id: str, sender_id: str, content: str, message_type: str):
     """
@@ -215,6 +239,7 @@ async def broadcast_message(chat_id: str, message_id: str, sender_id: str, conte
     chat = chat_ref.get()
 
     if not chat.exists:
+        logger.error(f"Chat {chat_id} not found for broadcasting")
         return
 
     participants = chat.to_dict().get('participants', [])
@@ -238,8 +263,9 @@ async def broadcast_message(chat_id: str, message_id: str, sender_id: str, conte
             for connection in active_connections[participant].values():
                 try:
                     await connection.send_text(message_json)
+                    logger.debug(f"WebSocket message sent to {participant}")
                 except Exception as e:
-                    logger.error(f"Error sending WebSocket message: {str(e)}")
+                    logger.error(f"Error sending WebSocket message to {participant}: {str(e)}")
 
 async def broadcast_event(chat_id: str, event: dict, sender_id: str):
     """
@@ -250,6 +276,7 @@ async def broadcast_event(chat_id: str, event: dict, sender_id: str):
     chat = chat_ref.get()
 
     if not chat.exists:
+        logger.error(f"Chat {chat_id} not found for broadcasting event")
         return
 
     participants = chat.to_dict().get('participants', [])
@@ -264,5 +291,6 @@ async def broadcast_event(chat_id: str, event: dict, sender_id: str):
             for connection in active_connections[participant].values():
                 try:
                     await connection.send_text(event_json)
+                    logger.debug(f"WebSocket event sent to {participant}")
                 except Exception as e:
-                    logger.error(f"Error sending WebSocket event: {str(e)}")
+                    logger.error(f"Error sending WebSocket event to {participant}: {str(e)}")

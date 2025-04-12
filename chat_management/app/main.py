@@ -9,6 +9,8 @@ from .groups.router import router as groups_router
 from .messages.router import router as messages_router
 from .notifications.router import router as notifications_router
 from .ws.router import router as ws_router
+from fastapi.middleware.cors import CORSMiddleware
+
 
 # import all you need from fastapi-pagination
 
@@ -17,6 +19,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler()]
 )
+
+origins = [
+    "*"
+]
 
 # Print all environment variables
 for key, value in os.environ.items():
@@ -31,6 +37,15 @@ PREFIX = get_prefix(API_VERSION)
 logger.info(f"Start HTTP server with prefix: {PREFIX}")
 
 app = FastAPI(root_path=PREFIX)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(chats_router)
 app.include_router(messages_router)
 app.include_router(groups_router)

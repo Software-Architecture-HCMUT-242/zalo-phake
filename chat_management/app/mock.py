@@ -1,8 +1,10 @@
 
-from faker import Faker
 import random
-from .messages.schemas import Message
+
+from faker import Faker
+
 from .chats.schemas import Chat
+from .messages.schemas import Message
 
 fake = Faker()
 
