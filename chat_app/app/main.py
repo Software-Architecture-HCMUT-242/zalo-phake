@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, RootModel
 from firebase import FirebaseDB
 from copy import deepcopy
@@ -8,6 +9,19 @@ from log import log
 database = FirebaseDB()
 database.connect()
 app = FastAPI()
+
+origins = [
+    "http://localhost:5173",  # localhost of FE app
+    "https://zalophake.me"  # placeholder for FE domain
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
