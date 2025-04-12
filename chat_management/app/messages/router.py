@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -6,7 +7,7 @@ from typing import Dict, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from firebase_admin import firestore
-from sqlalchemy.util import asyncio
+
 
 from .schemas import Message, MessageType
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
