@@ -3,12 +3,12 @@ disable_existing_loggers: False
 formatters:
   default:
     "()": uvicorn.logging.ColourizedFormatter
-    fmt: "{asctime} {levelprefix} {name}: {message}"
+    fmt: "{asctime} {filename}:{lineno}  {levelprefix} {name}: {message}"
     use_colors: True
     style: "{"
   access:
     "()": uvicorn.logging.AccessFormatter
-    fmt: '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    fmt: '%(asctime)s %(filename)s:%(lineno)s [%(levelname)s] %(name)s: %(message)s'
     use_colors: True
 handlers:
   default:
