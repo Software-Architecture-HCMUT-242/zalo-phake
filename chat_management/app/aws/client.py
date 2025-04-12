@@ -1,7 +1,7 @@
 import boto3
 from botocore.exceptions import ClientError
 import json
-from app.aws.config import settings
+from .config import settings
 
 class SQSClient:
     def __init__(self, **kwargs):
