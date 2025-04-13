@@ -10,7 +10,7 @@ from firebase_admin import firestore
 from firebase_admin.firestore import FieldFilter
 
 from .schemas import Conversation, ConversationListResponse, ConversationType, MessagePreview, ConversationResponse, \
-    ConversationCreate, ConversationDetail
+    ConversationCreate, ConversationDetail, ConversationMetadataUpdate
 from ..aws.sqs_utils import is_sqs_available, send_to_sqs
 from ..dependencies import AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
@@ -432,3 +432,102 @@ async def get_conversation(
     except Exception as e:
         logger.error(f"Error fetching conversation {conversation_id}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve conversation details")
+
+
+@router.put('/conversations/{conversation_id}', response_model=ConversationDetail)
+async def update_conversation_metadata(
+    conversation_id: str,
+    body: ConversationMetadataUpdate,
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Update metadata for a group conversation (name, description, avatar_url).
+    Only admins can update group conversation metadata.
+    This operation is only applicable for conversations with type 'group'.
+    
+    Returns the updated conversation details.
+    
+    Raises:
+        401: If authentication is invalid
+        403: If the user is not an admin or if the conversation is not a group
+        404: If the conversation is not found
+        500: If there's a server error
+    """
+    try:
+        user_phone_num = current_user.phoneNumber
+        
+        # Get the conversation from Firestore
+        conversation_ref = firestore_db.collection('chats').document(conversation_id)
+        conversation = conversation_ref.get()
+        
+        if not conversation.exists:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Convert to dict and handle timestamps
+        conversation_data = conversation.to_dict()
+        
+        # Check if the conversation is a group
+        if conversation_data.get('type') != 'group':
+            raise HTTPException(status_code=403, detail="This operation is only applicable for group conversations")
+        
+        # Check if the user is a participant in this conversation
+        if user_phone_num not in conversation_data.get('participants', []):
+            raise HTTPException(status_code=403, detail="You are not a member of this conversation")
+        
+        # Check if the user is an admin
+        if user_phone_num not in conversation_data.get('admins', []):
+            raise HTTPException(status_code=403, detail="Only admins can update group metadata")
+        
+        # Prepare update data with only the fields that need changing
+        update_data = {}
+        
+        if body.name is not None:
+            update_data['name'] = body.name
+            
+        if body.description is not None:
+            update_data['description'] = body.description
+            
+        if body.avatar_url is not None:
+            update_data['avatarUrl'] = body.avatar_url
+        
+        # Only update if there's something to update
+        if update_data:
+            # Update lastMessageTime to track the modification
+            update_data['lastMessageTime'] = firestore.SERVER_TIMESTAMP
+            
+            # Update the conversation
+            conversation_ref.update(update_data)
+        
+        # Get the updated conversation
+        updated_conversation = conversation_ref.get()
+        updated_data = updated_conversation.to_dict()
+        updated_data = convert_timestamps(updated_data)
+        
+        # Build and return the detailed conversation object
+        return ConversationDetail(
+            id=conversation_id,
+            name=updated_data.get('name'),
+            type=ConversationType.GROUP,
+            description=updated_data.get('description', ''),
+            created_at=updated_data.get('createdTime'),
+            updated_at=updated_data.get('lastMessageTime', updated_data.get('createdTime')),
+            participants=updated_data.get('participants', []),
+            admins=updated_data.get('admins', []),
+            last_message=MessagePreview(
+                content=updated_data.get('lastMessagePreview', ''),
+                sender_id=updated_data.get('lastMessageSenderId', ''),
+                timestamp=updated_data.get('lastMessageTime'),
+                type=updated_data.get('lastMessageType', 'text')
+            ) if 'lastMessagePreview' in updated_data and 'lastMessageTime' in updated_data else None,
+            unread_count=0,  # We don't need to calculate this for the updating user
+            avatar_url=updated_data.get('avatarUrl'),
+            is_muted=user_phone_num in updated_data.get('mutedBy', []),
+            metadata=updated_data.get('metadata', {})
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error updating conversation {conversation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update conversation metadata")
