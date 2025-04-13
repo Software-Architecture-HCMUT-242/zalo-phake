@@ -33,11 +33,11 @@
         },
         {
           "name": "AWS_ACCESS_KEY_ID",
-          "value": "${aws:accessKeyId}"
+          "value": "<aws_access_key_id>"
         },
         {
           "name": "AWS_SECRET_ACCESS_KEY",
-          "value": "${aws:secretAccessKey}"
+          "value": "<aws_secret_access_key>"
         },
         {
           "name": "AWS_DEFAULT_REGION",
