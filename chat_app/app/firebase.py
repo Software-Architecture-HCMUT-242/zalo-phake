@@ -85,6 +85,9 @@ class FirebaseDB():
     def query_user_by_phone_number(phone):
         return auth.get_user_by_phone_number(phone)
     
+    def query_user_id(uid):
+        return auth.get_user(uid)
+    
     def update_user(*args, **kwargs):
         return auth.update_user(*args, **kwargs)
 

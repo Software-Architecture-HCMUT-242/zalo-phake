@@ -72,22 +72,27 @@ async def register(request: Dict[Any, Any]):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
-    # [2]: Check if user exist in DB
-    user = database.query_user_by_phone_number(request["phone_number"])
-    log(f"[Debug] Queried user is: {user}")
-    if user:
-        log(f'[Error] User already exist in database')
-        raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
-
-    # [3]: Validate FE token from firebase OTP
+    # [2]: Validate FE token from firebase OTP
+    # NOTE: After FE send OTP back, firebase will create a user and send this user's token back
+    # this user will have empty keys like name, password, ... Only uid will be init
     decoded_token = database.verify_token(request["token"])
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # Update the user's info
+    user = database.update_user(decoded_token["uid"], phone_number=request["phone_number"], display_name=request["name"], password=request["password"])
 
-    # [4]: Insert user to DB if not existed
-    user = database.create_user(phone_number=request["phone_number"], password=request["password"])
-    return {"success": True, "user": user}
+    # [3]: Check if user exist in realtimeDB
+    vResponse = {}
+    database.query(f'/User/{decoded_token["uid"]}', response=vResponse)
+    log(f"[Debug] The realtimeDB data is: {vResponse}")
+    if vResponse["body"]:
+        log(f'[Error] User already exist in database: {vResponse["body"]}')
+        raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
+    # Insert user to DB if not existed
+    database.insert(f'/User/{decoded_token["uid"]}', {"friends": [], "groups": []})
+
+    return {"success": True, "user": vResponse["body"], "retoken": True}
 
 
 @app.post("/api/auth/login", status_code=200)
@@ -95,25 +100,17 @@ async def login(request: Dict[Any, Any]):
     vData = deepcopy(request)
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, str, vError, required=True):
+    if not validate(vData, "token", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
-    # [2]: Check if user exist in DB
+    # [2]: Validate FE token from firebase OTP
+    decoded_token = database.verify_token(request["token"])
+    if not decoded_token:
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
     user = database.query_user_by_phone_number(request["phone_number"])
     log(f"[Debug] Queried user is: {user}")
-    if not user:
-        log(f"[Debug] User phone number \"{request["phone_number"]}\" not found in database")
-        # return obscured error info to make it harder to attack
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
-    
-    # [3]: Validate password
-    if user["password"] != request["password"]:
-        log(f"[Debug] User password \"{request["password"]}\" not match database \"{user["password"]}\"")
-        # return obscured error info to make it harder to attack
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
     # BE doesn't need to send token back, only need to verify FE token
     # FE refresh token is received directly from Firebase, invalid after logout
@@ -125,7 +122,7 @@ async def change_pass(request: Dict[Any, Any]):
     vData = deepcopy(request)
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True):
+    if not validate(vData, "token", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "old_password", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
@@ -133,17 +130,23 @@ async def change_pass(request: Dict[Any, Any]):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
-    # [2]: Check if user exist in DB
-    user = database.query_user_by_phone_number(request["phone_number"])
+    # [2]: Validate FE token from firebase OTP
+    decoded_token = database.verify_token(request["token"])
+    if not decoded_token:
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+
+    # [3]: Check if user's password matches old password
+    user = database.query_user_id(request["phone_number"])
     log(f"[Debug] Queried user is: {user}")
-    if not user:
-        log(f"[Debug] User phone number \"{request["phone_number"]}\" not found in database")
+    if not user.password == request["old_password"]:
+        log(f"[Error] Old password not matched")
         # return obscured error info to make it harder to attack
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
     # [3]: Update user's password
     user = database.update_user(password=request["new_password"])
-    return {"success": True, "user": user}
+    return {"success": True, "user": user, "retoken": True}
 
 
 @app.post("/api/auth/forgot-pass", status_code=200)
@@ -151,29 +154,19 @@ async def forgot_pass(request: Dict[Any, Any]):
     vData = deepcopy(request)
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "new_password", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "token", str, str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
-    # [2]: Check if user exist in DB
-    user = database.query_user_by_phone_number(request["phone_number"])
-    log(f"[Debug] Queried user is: {user}")
-    if not user:
-        log(f"[Debug] User phone number \"{request["phone_number"]}\" not found in database")
-        # return obscured error info to make it harder to attack
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
-
-    # [3]: Validate FE token from firebase OTP
+    # [2]: Validate FE token from firebase OTP
     decoded_token = database.verify_token(request["token"])
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    
-    # [4]: Update user's password
+
+    # [3]: Update user's password
     user = database.update_user(password=request["new_password"])
-    return {"success": True, "user": user}
+    return {"success": True, "user": user, "retoken": True}
 
