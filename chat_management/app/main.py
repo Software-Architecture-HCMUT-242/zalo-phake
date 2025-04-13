@@ -54,9 +54,9 @@ async def health_check():
     """
     return {"status": "healthy", "version": "1.0.0"}
 
-app.include_router(chats_router)
+# app.include_router(chats_router)
 app.include_router(conversations_router)
-app.include_router(messages_router)
-app.include_router(groups_router)
+# app.include_router(messages_router)
+# app.include_router(groups_router)
 app.include_router(notifications_router)
 app.include_router(ws_router)
