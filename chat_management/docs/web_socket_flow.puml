@@ -1,0 +1,24 @@
+@startuml WebSocket Connection
+actor User
+participant "Instance A (FastAPI)" as InstA
+participant "Redis" as Redis
+participant "Firestore" as FS
+
+User -> InstA : WebSocket Connect (/ws/{user_id})
+activate InstA
+InstA -> FS : Update User Status (isOnline=true, lastActive=now)
+activate FS
+FS --> InstA : Status Updated
+deactivate FS
+InstA -> Redis : Store Connection Info (UserID, ConnID, InstID)
+activate Redis
+Redis --> InstA : Info Stored
+deactivate Redis
+InstA -> Redis : Subscribe(user:{user_id}, conversation:{conv_id_1}, ...)
+activate Redis
+Redis --> InstA : Subscribed
+deactivate Redis
+InstA --> User : Connection Accepted
+deactivate InstA
+
+@enduml

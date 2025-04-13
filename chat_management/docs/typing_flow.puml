@@ -1,0 +1,24 @@
+@startuml Typing Indicator Flow
+actor "User A" as UserA
+participant "Instance A (FastAPI)" as InstA
+participant "Redis Pub/Sub" as Redis
+participant "Instance B (FastAPI)" as InstB
+actor "User B" as UserB
+
+UserA -> InstA : WebSocket Send (typing, {conv_id})
+activate InstA
+InstA -> Redis : PUBLISH(channel: conversation:{conv_id}, event: typing{user_id_A})
+activate Redis
+Redis --> InstA : Published
+deactivate Redis
+Redis --> InstB : Receive(channel: conversation:{conv_id}, event: typing{user_id_A})
+deactivate InstA
+activate InstB
+InstB -> InstB : Check local connections for User B in {conv_id} (not User A)
+InstB -> UserB : WebSocket Send (typing{user_id_A})
+activate UserB
+deactivate InstB
+UserB --> UserB : Show Typing Indicator
+deactivate UserB
+
+@enduml

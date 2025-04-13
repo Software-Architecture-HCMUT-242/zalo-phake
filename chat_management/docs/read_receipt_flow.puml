@@ -1,0 +1,30 @@
+@startuml Read Receipt Flow
+actor "User A" as UserA
+participant "Instance A (FastAPI)" as InstA
+participant "Firestore" as FS
+participant "Redis Pub/Sub" as Redis
+participant "Instance B (FastAPI)" as InstB
+actor "User B" as UserB
+
+UserA -> InstA : WebSocket Send (message_read, {conv_id}, {msg_id})
+note right: Or via HTTP POST
+activate InstA
+InstA -> FS : Update Message (readBy), Update User Unread Count
+activate FS
+FS --> InstA : Updates Done
+deactivate FS
+InstA -> Redis : PUBLISH(channel: conversation:{conv_id}, event: message_read{user_id_A, msg_id})
+activate Redis
+Redis --> InstA : Published
+deactivate Redis
+Redis --> InstB : Receive(channel: conversation:{conv_id}, event: message_read{user_id_A, msg_id})
+deactivate InstA
+activate InstB
+InstB -> InstB : Check local connections for User B in {conv_id} (not User A)
+InstB -> UserB : WebSocket Send (message_read{user_id_A, msg_id})
+activate UserB
+deactivate InstB
+UserB --> UserB : Update Message Status UI
+deactivate UserB
+
+@enduml

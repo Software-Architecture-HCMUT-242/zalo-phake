@@ -1,0 +1,36 @@
+@startuml New Message Flow
+actor "User A" as UserA
+participant "Instance B (FastAPI)" as InstB
+participant "Firestore" as FS
+participant "Redis Pub/Sub" as Redis
+participant "Instance C (FastAPI)" as InstC
+actor "User B" as UserB
+
+UserA -> InstB : POST /conversations/{conv_id}/messages
+activate InstB
+InstB -> FS : Save Message
+activate FS
+FS --> InstB : Message Saved (msg_id)
+InstB -> FS : Update Conversation (lastMessage)
+FS --> InstB : Conversation Updated
+deactivate FS
+InstB -> Redis : PUBLISH(channel: conversation:{conv_id}, event: new_message{...})
+activate Redis
+Redis --> InstB : Published
+deactivate Redis
+Redis --> InstC : Receive(channel: conversation:{conv_id}, event: new_message{...})
+deactivate InstB
+activate InstC
+InstC -> InstC : Check local connections for User B in {conv_id}
+InstC -> UserB : WebSocket Send (new_message{...})
+activate UserB
+deactivate InstC
+UserB --> UserB : Display Message
+deactivate UserB
+
+note right of InstB
+  Offline push notifications (SQS/Lambda)
+  can also be triggered here if needed.
+end note
+
+@enduml
