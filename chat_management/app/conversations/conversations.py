@@ -135,7 +135,6 @@ async def get_conversations(
         # Return paginated response
         return PaginatedResponse.create(
             items=conversations,
-            has_more=(pagination.page * pagination.size) < total_conversations,
             total=total_conversations,
             page=pagination.page,
             size=pagination.size

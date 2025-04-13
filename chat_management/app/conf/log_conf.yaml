@@ -3,7 +3,7 @@ disable_existing_loggers: False
 formatters:
   default:
     "()": uvicorn.logging.ColourizedFormatter
-    fmt: "{asctime} {filename}:{lineno}  {levelprefix} {name}: {message}"
+    fmt: "{asctime} {filename}:{lineno}  {levelname} {name}: {message}"
     use_colors: True
     style: "{"
   access:
