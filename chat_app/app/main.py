@@ -5,10 +5,15 @@ from firebase import FirebaseDB
 from copy import deepcopy
 from typing import Dict, Any
 from log import log
+from config import get_prefix
 
 database = FirebaseDB()
 database.connect()
-app = FastAPI()
+
+API_VERSION = '/api/v1'
+PREFIX = get_prefix(API_VERSION)
+log(f"Start HTTP server with prefix: {PREFIX}")
+app = FastAPI(root_path=PREFIX)
 
 origins = [
     "http://localhost:5173",  # localhost of FE app
@@ -24,7 +29,7 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/health", tags=["Health"])
 def ping():
     return {"message": "pong"}
 
@@ -53,7 +58,7 @@ def validate(body, key, type_origin, type_convert, error, required=False):
 
 
 # FastAPI route for login
-@app.post("/api/auth/login")
+@app.post("/auth/login")
 async def login(request: Dict[Any, Any]):
     vData = deepcopy(request)  # Convert Pydantic model to dictionary
     vError = {}
@@ -79,7 +84,7 @@ async def login(request: Dict[Any, Any]):
     return {"success": True, "token": token, "user": vResponse}
 
 
-@app.post("/api/auth/register")
+@app.post("/auth/register")
 async def register(request: Dict[Any, Any]):
     vData = deepcopy(request)
     vError = {}

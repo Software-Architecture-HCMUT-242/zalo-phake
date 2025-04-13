@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    path_prefix: str = '/chat'
+    path_prefix: str = '/user'
     fastapi_secret_key: str = '1234567890'
 
 settings = Settings()
