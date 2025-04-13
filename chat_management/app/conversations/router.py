@@ -10,7 +10,7 @@ from firebase_admin import firestore
 from firebase_admin.firestore import FieldFilter
 
 from .schemas import Conversation, ConversationListResponse, ConversationType, MessagePreview, ConversationResponse, \
-    ConversationCreate
+    ConversationCreate, ConversationDetail
 from ..aws.sqs_utils import is_sqs_available, send_to_sqs
 from ..dependencies import AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
@@ -327,3 +327,108 @@ async def create_conversation(
         updated_at=now,
         last_message=last_message
     )
+
+
+@router.get('/conversations/{conversation_id}', response_model=ConversationDetail)
+async def get_conversation(
+    conversation_id: str,
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Get details of a specific conversation (direct or group).
+    
+    Only members of the conversation can access its details.
+    
+    Returns:
+        The conversation details including participants, messages, and metadata.
+    
+    Raises:
+        404: If the conversation is not found
+        403: If the user is not a member of the conversation
+        500: If there's a server error
+    """
+    try:
+        user_phone_num = current_user.phoneNumber
+        
+        # Get the conversation from Firestore
+        conversation_ref = firestore_db.collection('chats').document(conversation_id)
+        conversation = conversation_ref.get()
+        
+        if not conversation.exists:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        # Convert to dict and handle timestamps
+        conversation_data = conversation.to_dict()
+        conversation_data = convert_timestamps(conversation_data)
+        
+        # Check if the user is a participant in this conversation
+        if user_phone_num not in conversation_data.get('participants', []):
+            raise HTTPException(status_code=403, detail="You are not a member of this conversation")
+        
+        # Determine conversation type
+        conv_type = ConversationType.GROUP if conversation_data.get('type') == 'group' else ConversationType.DIRECT
+        
+        # For direct chats, set the name to the other participant's name/number
+        name = conversation_data.get('name', '')
+        if conv_type == ConversationType.DIRECT:
+            participants = conversation_data.get('participants', [])
+            # Filter out current user to get the other participant
+            other_participants = [p for p in participants if p != user_phone_num]
+            if other_participants:
+                name = other_participants[0]  # Use other participant's ID as name
+        
+        # Get last message preview
+        last_message = None
+        if 'lastMessagePreview' in conversation_data and 'lastMessageTime' in conversation_data:
+            # Try to get sender info if available
+            sender_id = conversation_data.get('lastMessageSenderId', '')
+            
+            last_message = MessagePreview(
+                content=conversation_data.get('lastMessagePreview', ''),
+                sender_id=sender_id,
+                timestamp=conversation_data.get('lastMessageTime'),
+                type=conversation_data.get('lastMessageType', 'text')
+            )
+        
+        # Get unread count for the current user
+        unread_count = 0
+        unread_doc = conversation_ref.collection('user_stats').document(user_phone_num).get()
+        
+        if unread_doc.exists:
+            unread_count = unread_doc.to_dict().get('unreadCount', 0)
+        
+        # Get additional metadata for group conversations
+        description = ''
+        admins = []
+        if conv_type == ConversationType.GROUP:
+            description = conversation_data.get('description', '')
+            admins = conversation_data.get('admins', [])
+        
+        # Check if the conversation is muted for the current user
+        is_muted = user_phone_num in conversation_data.get('mutedBy', [])
+        
+        # Build the detailed conversation object
+        detailed_conversation = ConversationDetail(
+            id=conversation_id,
+            name=name,
+            type=conv_type,
+            description=description,
+            created_at=conversation_data.get('createdTime'),
+            updated_at=conversation_data.get('lastMessageTime', conversation_data.get('createdTime')),
+            participants=conversation_data.get('participants', []),
+            admins=admins,
+            last_message=last_message,
+            unread_count=unread_count,
+            avatar_url=conversation_data.get('avatarUrl'),
+            is_muted=is_muted,
+            metadata=conversation_data.get('metadata', {})
+        )
+        
+        return detailed_conversation
+        
+    except HTTPException as e:
+        # Re-raise HTTP exceptions to maintain their status codes and details
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching conversation {conversation_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve conversation details")

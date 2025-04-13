@@ -40,6 +40,23 @@ class Conversation(BaseModel):
     is_muted: bool = False
 
 
+class ConversationDetail(BaseModel):
+    """Detailed conversation model for single conversation response"""
+    id: str
+    name: Optional[str] = None
+    type: ConversationType
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    participants: List[str] = []
+    admins: List[str] = []
+    last_message: Optional[MessagePreview] = None
+    unread_count: int = 0
+    avatar_url: Optional[str] = None
+    is_muted: bool = False
+    metadata: Dict[str, Any] = {}
+
+
 class ConversationListResponse(BaseModel):
     """Response model for listing conversations"""
     conversations: List[Conversation]
