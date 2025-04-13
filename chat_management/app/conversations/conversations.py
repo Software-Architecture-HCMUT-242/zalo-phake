@@ -46,7 +46,7 @@ async def get_conversations(
         user_phone_num = current_user.phoneNumber
 
         # Query conversations where the user is a participant
-        conversations_ref = firestore_db.collection('chats')
+        conversations_ref = firestore_db.collection('conversations')
         query = conversations_ref.where(
             filter=FieldFilter('participants', 'array_contains', user_phone_num)
         ).order_by('lastMessageTime', direction='DESCENDING')
@@ -74,7 +74,7 @@ async def get_conversations(
             # Skip if unread_only is True and this conversation has no unread messages
             if unread_only:
                 # Get unread count from user_conversations subcollection
-                unread_doc = firestore_db.collection('chats').document(conv.id).collection(
+                unread_doc = firestore_db.collection('conversations').document(conv.id).collection(
                     'user_stats').document(user_phone_num).get()
 
                 if unread_doc.exists:
@@ -111,7 +111,7 @@ async def get_conversations(
 
             # Get unread count
             unread_count = 0
-            unread_doc = firestore_db.collection('chats').document(conv.id).collection(
+            unread_doc = firestore_db.collection('conversations').document(conv.id).collection(
                 'user_stats').document(user_phone_num).get()
 
             if unread_doc.exists:
@@ -188,7 +188,7 @@ async def create_conversation(
         sorted_participants = sorted(body.participants)
 
         # Check if a direct conversation already exists between these participants
-        conversations_ref = firestore_db.collection('chats')
+        conversations_ref = firestore_db.collection('conversations')
         query = conversations_ref.where('type', '==', 'direct').where('participants', '==', sorted_participants)
         existing_conversations = list(query.stream())
 
@@ -256,7 +256,7 @@ async def create_conversation(
 
     try:
         # Store conversation in Firestore
-        conversation_ref = firestore_db.collection('chats').document(conversation_id)
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
         conversation_ref.set(conversation_data)
 
         # Add initial message if provided
@@ -351,7 +351,7 @@ async def get_conversation(
         user_phone_num = current_user.phoneNumber
         
         # Get the conversation from Firestore
-        conversation_ref = firestore_db.collection('chats').document(conversation_id)
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
         conversation = conversation_ref.get()
         
         if not conversation.exists:
@@ -457,7 +457,7 @@ async def update_conversation_metadata(
         user_phone_num = current_user.phoneNumber
         
         # Get the conversation from Firestore
-        conversation_ref = firestore_db.collection('chats').document(conversation_id)
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
         conversation = conversation_ref.get()
         
         if not conversation.exists:

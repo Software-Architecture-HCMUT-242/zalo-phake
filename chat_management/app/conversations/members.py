@@ -11,3 +11,4 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     dependencies=[Depends(token_required)],
 )
+
