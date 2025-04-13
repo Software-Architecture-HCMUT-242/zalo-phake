@@ -1,0 +1,50 @@
+@startuml SQS Flow for Offline Notification
+
+actor "User A" as UserA
+participant "API Instance B (FastAPI)" as InstB
+queue "AWS SQS Queue" as SQS
+participant "AWS Lambda (Notification Processor)" as Lambda
+participant "Firestore" as FS
+participant "Push Notification Service (FCM/SNS)" as PNS
+actor "User B's Device (Offline)" as UserBDevice
+
+UserA -> InstB : POST /conversations/{conv_id}/messages
+activate InstB
+
+InstB -> FS : Save Message Data
+activate FS
+FS --> InstB : Message Saved
+deactivate FS
+
+InstB -> SQS : Send Notification Task (msg details, participants)
+note right: Uses sqs_utils.py logic \n[cite: chat_management/app/conversations/messages.py, chat_management/app/aws/sqs_utils.py]
+activate SQS
+SQS --> InstB : Task Queued
+deactivate InstB
+
+... Later ...
+
+Lambda -> SQS : Poll/Receive Message
+activate Lambda
+SQS --> Lambda : Notification Task
+deactivate SQS
+
+Lambda -> FS : Get User B Status & Device Tokens
+note right: Checks isOnline field \n[cite: chat_management/lambda/notification_processor.py]
+activate FS
+FS --> Lambda : User B is Offline, Tokens: [...]
+deactivate FS
+
+Lambda -> PNS : Send Push Notification (Payload, Tokens)
+note right: [cite: chat_management/lambda/notification_processor.py]
+activate PNS
+PNS --> Lambda : Notification Sent
+deactivate Lambda
+
+PNS --> UserBDevice : Push Notification Delivered
+activate UserBDevice
+UserBDevice --> UserBDevice : Display Notification
+deactivate UserBDevice
+deactivate PNS
+
+@enduml
