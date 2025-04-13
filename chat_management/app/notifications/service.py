@@ -60,25 +60,26 @@ class NotificationService:
         This might be called directly or by a worker processing SQS messages
         """
         try:
-            chat_id = message_data.get('chatId')
+            # Handle both new and legacy field names
+            conversation_id = message_data.get('conversationId') or message_data.get('chatId')
             message_id = message_data.get('messageId')
             sender_id = message_data.get('senderId')
             content = message_data.get('content')
             participants = message_data.get('participants', [])
 
-            if not (chat_id and message_id and sender_id and content and participants):
+            if not (conversation_id and message_id and sender_id and content and participants):
                 logger.error(f"Invalid message data: {message_data}")
                 return False
 
-            # Get chat details for notification
-            chat_ref = firestore_db.collection('conversations').document(chat_id)
-            chat = chat_ref.get()
+            # Get conversation details for notification
+            conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+            conversation = conversation_ref.get()
 
-            if not chat.exists:
-                logger.error(f"Chat {chat_id} not found")
+            if not conversation.exists:
+                logger.error(f"Conversation {conversation_id} not found")
                 return False
 
-            chat_data = chat.to_dict()
+            conversation_data = conversation.to_dict()
 
             # Get sender name
             sender_ref = firestore_db.collection('users').document(sender_id)
@@ -114,7 +115,7 @@ class NotificationService:
                             participant_id,
                             sender_name,
                             content[:100] + ('...' if len(content) > 100 else ''),
-                            chat_id,
+                            conversation_id,
                             message_id
                         ))
 
@@ -125,7 +126,7 @@ class NotificationService:
                         sender_name,
                         content,
                         {
-                            'chatId': chat_id,
+                            'conversationId': conversation_id,
                             'messageId': message_id,
                             'senderId': sender_id
                         }
@@ -179,7 +180,7 @@ class NotificationService:
             logger.error(f"Error checking notification preferences for user {user_id}: {str(e)}")
             return True  # Default to True in case of error
 
-    async def _send_push_notification(self, user_id, title, body, chat_id, message_id):
+    async def _send_push_notification(self, user_id, title, body, conversation_id, message_id):
         """
         Send push notification to a user's devices
         """
@@ -231,7 +232,7 @@ class NotificationService:
                                     body=body
                                 ),
                                 data={
-                                    'chatId': chat_id,
+                                    'conversationId': conversation_id,
                                     'messageId': message_id
                                 },
                                 token=token
@@ -257,7 +258,7 @@ class NotificationService:
                                         'body': body
                                     },
                                     'data': {
-                                        'chatId': chat_id,
+                                        'conversationId': conversation_id,
                                         'messageId': message_id
                                     }
                                 })

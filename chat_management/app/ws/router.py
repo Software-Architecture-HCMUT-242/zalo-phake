@@ -42,17 +42,28 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         event_type = message.get('event')
 
         if event_type == 'typing':
-          # User is typing in a chat
-          chat_id = message.get('chatId')
-          if chat_id:
+          # User is typing in a conversation
+          conversation_id = message.get('conversationId')
+          if conversation_id:
+            await connection_manager.handle_typing_notification(conversation_id, user_id)
+          # Backward compatibility
+          elif 'chatId' in message:
+            chat_id = message.get('chatId')
             await connection_manager.handle_typing_notification(chat_id, user_id)
+            logger.warning(f"Deprecated 'chatId' field used instead of 'conversationId' in typing event")
 
         elif event_type == 'message_read':
           # User has read a message
-          chat_id = message.get('chatId')
+          conversation_id = message.get('conversationId')
           message_id = message.get('messageId')
-          if chat_id and message_id:
+          if conversation_id and message_id:
+            await connection_manager.handle_read_receipt(conversation_id, message_id, user_id)
+          # Backward compatibility
+          elif 'chatId' in message and message.get('messageId'):
+            chat_id = message.get('chatId')
+            message_id = message.get('messageId')
             await connection_manager.handle_read_receipt(chat_id, message_id, user_id)
+            logger.warning(f"Deprecated 'chatId' field used instead of 'conversationId' in message_read event")
 
         elif event_type == 'heartbeat':
           # Update last active time for the user

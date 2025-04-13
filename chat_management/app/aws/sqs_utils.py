@@ -108,7 +108,7 @@ async def send_chat_message_notification(
   Send a chat message notification to the SQS queue.
 
   Args:
-      chat_id: The chat ID
+      chat_id: The conversation ID (parameter kept as chat_id for backward compatibility)
       message_id: The message ID
       sender_id: The sender's ID
       content: The message content
@@ -120,7 +120,8 @@ async def send_chat_message_notification(
       bool: True if message was sent successfully, False otherwise
   """
   payload = {
-    'chatId': chat_id,
+    'conversationId': chat_id,  # Use conversationId as the primary key
+    'chatId': chat_id,          # Keep chatId for backward compatibility
     'messageId': message_id,
     'senderId': sender_id,
     'content': content,
@@ -142,8 +143,8 @@ async def send_group_invitation_notification(
   Send a group invitation notification to the SQS queue.
 
   Args:
-      group_id: The group ID
-      group_name: The name of the group
+      group_id: The conversation ID (parameter kept as group_id for backward compatibility)
+      group_name: The name of the group/conversation
       sender_id: The ID of the user sending the invitation
       invitee_id: The ID of the invited user
       delay_seconds: Delay before message becomes visible
@@ -152,7 +153,8 @@ async def send_group_invitation_notification(
       bool: True if message was sent successfully, False otherwise
   """
   payload = {
-    'groupId': group_id,
+    'conversationId': group_id,  # Use conversationId as the primary key
+    'groupId': group_id,         # Keep groupId for backward compatibility
     'groupName': group_name,
     'senderId': sender_id,
     'inviteeId': invitee_id,

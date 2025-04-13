@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class ConnectionManager:
   def __init__(self):
     self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
-    self.user_chats: Dict[str, Set[str]] = {}  # Maps user IDs to their chat IDs
+    self.user_conversations: Dict[str, Set[str]] = {}  # Maps user IDs to their conversation IDs
 
   async def connect(self, websocket: WebSocket, user_id: str):
     """
@@ -25,7 +25,7 @@ class ConnectionManager:
     # Initialize user's connections if not exists
     if user_id not in self.active_connections:
       self.active_connections[user_id] = {}
-      self.user_chats[user_id] = set()
+      self.user_conversations[user_id] = set()
 
     # Generate a connection ID for this specific connection
     connection_id = str(uuid.uuid4())
@@ -55,8 +55,8 @@ class ConnectionManager:
       # If this was the last connection for this user, clean up
       if not self.active_connections[user_id]:
         del self.active_connections[user_id]
-        if user_id in self.user_chats:
-          del self.user_chats[user_id]
+        if user_id in self.user_conversations:
+          del self.user_conversations[user_id]
         logger.info(f"User {user_id} has no more active connections")
         return True  # All connections closed
 
@@ -99,20 +99,20 @@ class ConnectionManager:
       for user_id, connection_id in disconnected:
         self.disconnect(user_id, connection_id)
 
-  async def broadcast_to_chat(self, message: dict, chat_id: str, skip_user_id: Optional[str] = None):
+  async def broadcast_to_conversation(self, message: dict, conversation_id: str, skip_user_id: Optional[str] = None):
     """
-    Broadcast a message to all participants in a chat
+    Broadcast a message to all participants in a conversation
     """
     try:
-      # Get chat participants from Firestore
-      chat_ref = firestore_db.collection('conversations').document(chat_id)
-      chat = chat_ref.get()
+      # Get conversation participants from Firestore
+      conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+      conversation = conversation_ref.get()
 
-      if not chat.exists:
-        logger.error(f"Chat {chat_id} not found for broadcasting")
+      if not conversation.exists:
+        logger.error(f"Conversation {conversation_id} not found for broadcasting")
         return
 
-      participants = chat.to_dict().get('participants', [])
+      participants = conversation.to_dict().get('participants', [])
       message_json = json.dumps(message)
 
       # Track users to disconnect
@@ -124,9 +124,9 @@ class ConnectionManager:
           continue
 
         if participant in self.active_connections:
-          # Add chat to user's chat set
-          if participant in self.user_chats:
-            self.user_chats[participant].add(chat_id)
+          # Add conversation to user's conversation set
+          if participant in self.user_conversations:
+            self.user_conversations[participant].add(conversation_id)
 
           # Send to all connections for this user
           for connection_id, websocket in self.active_connections[participant].items():
@@ -141,30 +141,30 @@ class ConnectionManager:
         self.disconnect(user_id, connection_id)
 
     except Exception as e:
-      logger.error(f"Error in broadcast_to_chat: {str(e)}")
+      logger.error(f"Error in broadcast_to_conversation: {str(e)}")
 
-  async def handle_typing_notification(self, chat_id: str, user_id: str):
+  async def handle_typing_notification(self, conversation_id: str, user_id: str):
     """
-    Broadcast typing notification to chat participants
+    Broadcast typing notification to conversation participants
     """
     typing_event = {
       'event': 'typing',
-      'chatId': chat_id,
+      'conversationId': conversation_id,
       'userId': user_id
     }
-    await self.broadcast_to_chat(typing_event, chat_id, skip_user_id=user_id)
+    await self.broadcast_to_conversation(typing_event, conversation_id, skip_user_id=user_id)
 
-  async def handle_read_receipt(self, chat_id: str, message_id: str, user_id: str):
+  async def handle_read_receipt(self, conversation_id: str, message_id: str, user_id: str):
     """
-    Broadcast read receipt to chat participants
+    Broadcast read receipt to conversation participants
     """
     read_event = {
       'event': 'message_read',
-      'chatId': chat_id,
+      'conversationId': conversation_id,
       'messageId': message_id,
       'userId': user_id
     }
-    await self.broadcast_to_chat(read_event, chat_id, skip_user_id=user_id)
+    await self.broadcast_to_conversation(read_event, conversation_id, skip_user_id=user_id)
 
   def get_user_connection_count(self, user_id: str) -> int:
     """

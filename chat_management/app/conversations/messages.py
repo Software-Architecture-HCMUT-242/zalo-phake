@@ -15,7 +15,7 @@ from ..messages.schemas import Message, MessageType
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
-from ..ws.websocket_manager import ConnectionManager
+from ..ws.router import get_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ router = APIRouter(
 )
 
 notification_service = NotificationService()
-connection_manager = ConnectionManager()
+connection_manager = get_connection_manager()
 
 @router.get('/{conversation_id}/messages', response_model=PaginatedResponse[Message])
 async def get_conversation_messages(
@@ -201,7 +201,7 @@ async def send_conversation_message(
         if is_sqs_available():
             try:
                 notification_sent = await send_chat_message_notification(
-                    chat_id=conversation_id,
+                    chat_id=conversation_id,  # SQS utility still uses chat_id parameter name
                     message_id=message_id,
                     sender_id=current_user.phoneNumber,
                     content=content,
@@ -224,7 +224,7 @@ async def send_conversation_message(
                 # Prepare message for direct notification processing
                 notification_data = {
                     'event': 'new_message',
-                    'chatId': conversation_id,
+                    'conversationId': conversation_id,  # Updated to use conversationId
                     'messageId': message_id,
                     'senderId': current_user.phoneNumber,
                     'content': content,
@@ -247,6 +247,68 @@ async def send_conversation_message(
         'status': 'sent'
     }
 
+@router.post('/{conversation_id}/messages/{message_id}/read')
+async def mark_message_as_read(
+    conversation_id: str,
+    message_id: str,
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Mark a message as read by the current user
+    
+    Args:
+        conversation_id: The ID of the conversation containing the message
+        message_id: The ID of the message to mark as read
+        current_user: The authenticated user making the request
+        
+    Returns:
+        dict: Success status
+        
+    Raises:
+        403: If the user is not a participant in the conversation
+        404: If the conversation or message doesn't exist
+    """
+    # Verify user is part of this conversation
+    conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+    conversation = conversation_ref.get()
+
+    if not conversation.exists:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    conversation_data = conversation.to_dict()
+    if current_user.phoneNumber not in conversation_data.get('participants', []):
+        raise HTTPException(status_code=403, detail="User is not a participant in this conversation")
+
+    # Get the message
+    message_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages').document(message_id)
+    message = message_ref.get()
+
+    if not message.exists:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    message_data = message.to_dict()
+    read_by = message_data.get('readBy', [])
+
+    # Add user to readBy if not already there
+    if current_user.phoneNumber not in read_by:
+        read_by.append(current_user.phoneNumber)
+        message_ref.update({'readBy': read_by})
+
+    # Notify other participants via WebSocket that message has been read
+    try:
+        read_event = {
+            'event': 'message_read',
+            'conversationId': conversation_id,
+            'messageId': message_id,
+            'userId': current_user.phoneNumber
+        }
+        await connection_manager.broadcast_to_conversation(read_event, conversation_id, skip_user_id=current_user.phoneNumber)
+    except Exception as e:
+        logger.error(f"Error broadcasting read receipt: {str(e)}")
+        # Don't fail the request if WebSocket notification fails
+
+    return {'status': 'success'}
+
 async def broadcast_message(conversation_id: str, message_id: str, sender_id: str, content: str, message_type: str):
     """
     Broadcast a message to all participants in a conversation
@@ -261,7 +323,7 @@ async def broadcast_message(conversation_id: str, message_id: str, sender_id: st
     # Prepare the event data
     message_event = {
         'event': 'new_message',
-        'chatId': conversation_id,
+        'conversationId': conversation_id,
         'messageId': message_id,
         'senderId': sender_id,
         'content': content,
@@ -270,4 +332,4 @@ async def broadcast_message(conversation_id: str, message_id: str, sender_id: st
     }
     
     # Use the connection manager to broadcast the message
-    await connection_manager.broadcast_to_chat(message_event, conversation_id, skip_user_id=sender_id)
+    await connection_manager.broadcast_to_conversation(message_event, conversation_id, skip_user_id=sender_id)
