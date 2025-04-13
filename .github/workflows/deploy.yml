@@ -131,7 +131,7 @@ jobs:
           B="${A//\\/\\\\}"
           sed -i "s|\"<firebase_secret>\"|$B|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
           sed -i "s|<aws_access_key_id>|$AWS_ACCESS_KEY_ID|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
-          sed -i "s|<firebase_secret>|$AWS_SECRET_ACCESS_KEY|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+          sed -i "s|<aws_secret_access_key>|$AWS_SECRET_ACCESS_KEY|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
 
       - name: Cat firebase-credentials.json
         run: |
