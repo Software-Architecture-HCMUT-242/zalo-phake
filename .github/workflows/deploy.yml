@@ -123,11 +123,17 @@ jobs:
         id: firebase-credentials
         env:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SECRET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           echo "$FIREBASE_SECRET" > ${{ env.FIREBASE_SECRET_CREDENTIALS }}
           A=$(printf '%s' "$FIREBASE_SECRET" | jq tostring)
           B="${A//\\/\\\\}"
           sed -i "s|\"<firebase_secret>\"|$B|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+          A=$(printf '%s' "$AWS_SECRET_ACCESS_KEY" | jq tostring)
+          sed -i "s|\"<aws_secret_access_key>\"|$B|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+          A=$(printf '%s' "$AWS_ACCESS_KEY_ID" | jq tostring)
+          sed -i "s|\"<aws_access_key_id>\"|$B|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
 
       - name: Cat firebase-credentials.json
         run: |
