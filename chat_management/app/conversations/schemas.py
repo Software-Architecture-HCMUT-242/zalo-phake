@@ -57,15 +57,6 @@ class ConversationDetail(BaseModel):
     metadata: Dict[str, Any] = {}
 
 
-class ConversationListResponse(BaseModel):
-    """Response model for listing conversations"""
-    conversations: List[Conversation]
-    has_more: bool
-    total: int
-    page: int
-    size: int
-
-
 class ConversationCreate(BaseModel):
     """Request body for creating a new conversation"""
     type: ConversationType = ConversationType.DIRECT
@@ -96,14 +87,6 @@ class ConversationListItem(BaseModel):
     last_message: Optional[MessagePreview] = None
     updated_at: datetime
 
-
-class PaginatedConversationsResponse(BaseModel):
-    """Paginated response for conversations"""
-    conversations: List[ConversationListItem]
-    total: int
-    page: int
-    size: int
-    pages: int
 
 
 class ConversationMetadataUpdate(BaseModel):

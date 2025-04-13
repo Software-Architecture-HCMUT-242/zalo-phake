@@ -9,12 +9,12 @@ from fastapi import Depends, HTTPException, Query
 from firebase_admin import firestore
 from firebase_admin.firestore import FieldFilter
 
-from .schemas import Conversation, ConversationListResponse, ConversationType, MessagePreview, ConversationResponse, \
+from .schemas import Conversation, ConversationType, MessagePreview, ConversationResponse, \
     ConversationCreate, ConversationDetail, ConversationMetadataUpdate
 from ..aws.sqs_utils import is_sqs_available, send_to_sqs
 from ..dependencies import AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
-from ..pagination import common_pagination_parameters, PaginationParams
+from ..pagination import common_pagination_parameters, PaginationParams, PaginatedResponse
 from ..time_utils import convert_timestamps
 
 from ..dependencies import token_required
@@ -28,7 +28,7 @@ router = APIRouter(
 )
 
 
-@router.get('/conversations', response_model=ConversationListResponse)
+@router.get('/conversations', response_model=PaginatedResponse[Conversation])
 async def get_conversations(
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
         pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)],
@@ -133,8 +133,8 @@ async def get_conversations(
             conversations.append(conversation)
 
         # Return paginated response
-        return ConversationListResponse(
-            conversations=conversations,
+        return PaginatedResponse.create(
+            items=conversations,
             has_more=(pagination.page * pagination.size) < total_conversations,
             total=total_conversations,
             page=pagination.page,
