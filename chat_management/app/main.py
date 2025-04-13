@@ -1,17 +1,13 @@
 import logging
 import os
 
-from app.config import settings, get_prefix
+from app.config import get_prefix
 from fastapi import FastAPI
-
-from .chats.router import router as chats_router
-from .conversations.router import router as conversations_router
-from .groups.router import router as groups_router
-from .messages.router import router as messages_router
-from .notifications.router import router as notifications_router
-from .ws.router import router as ws_router
 from fastapi.middleware.cors import CORSMiddleware
 
+from .conversations import all_router as conversations_routers
+from .notifications.router import router as notifications_router
+from .ws.router import router as ws_router
 
 # import all you need from fastapi-pagination
 
@@ -55,7 +51,8 @@ async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
 
 # app.include_router(chats_router)
-app.include_router(conversations_router)
+for router in conversations_routers:
+    app.include_router(router)
 # app.include_router(messages_router)
 # app.include_router(groups_router)
 app.include_router(notifications_router)
