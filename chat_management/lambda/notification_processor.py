@@ -101,7 +101,7 @@ def lambda_handler(event, context):
 
 def process_new_message(message_data):
   """
-  Process a new chat message and send notifications to offline users
+  Process a new message and send notifications to offline users
 
   Args:
       message_data (dict): The message data from SQS
@@ -110,26 +110,26 @@ def process_new_message(message_data):
       bool: True if processing was successful, False otherwise
   """
   try:
-    # Extract necessary data
-    chat_id = message_data.get('chatId')
+    # Extract necessary data - supporting both new and legacy fields
+    conversation_id = message_data.get('conversationId') or message_data.get('chatId')
     message_id = message_data.get('messageId')
     sender_id = message_data.get('senderId')
     content = message_data.get('content')
     participants = message_data.get('participants', [])
 
     # Validate required fields
-    if not all([chat_id, message_id, sender_id, content, participants]):
+    if not all([conversation_id, message_id, sender_id, content, participants]):
       logger.error(f"Missing required fields in message data: {message_data}")
       return False
 
-    logger.info(f"Processing new message notification for chat {chat_id}")
+    logger.info(f"Processing new message notification for conversation {conversation_id}")
 
-    # Get chat details for notification context
-    chat_ref = db.collection('chats').document(chat_id)
-    chat = chat_ref.get()
+    # Get conversation details for notification context
+    conversation_ref = db.collection('conversations').document(conversation_id)
+    conversation = conversation_ref.get()
 
-    if not chat.exists:
-      logger.error(f"Chat {chat_id} not found")
+    if not conversation.exists:
+      logger.error(f"Conversation {conversation_id} not found")
       return False
 
     # Get sender details
@@ -172,7 +172,7 @@ def process_new_message(message_data):
               sender_name,
               content[:100] + ('...' if len(content) > 100 else ''),
               {
-                'chatId': chat_id,
+                'conversationId': conversation_id,
                 'messageId': message_id,
                 'senderId': sender_id
               }
@@ -185,7 +185,7 @@ def process_new_message(message_data):
             sender_name,
             content,
             {
-              'chatId': chat_id,
+              'conversationId': conversation_id,
               'messageId': message_id,
               'senderId': sender_id
             }
@@ -208,18 +208,18 @@ def process_group_invitation(message_data):
       bool: True if processing was successful, False otherwise
   """
   try:
-    # Extract necessary data
-    group_id = message_data.get('groupId')
+    # Extract necessary data - supporting both new and legacy fields
+    conversation_id = message_data.get('conversationId') or message_data.get('groupId')
     sender_id = message_data.get('senderId')
     invitee_id = message_data.get('inviteeId')
     group_name = message_data.get('groupName', 'a group')
 
     # Validate required fields
-    if not all([group_id, sender_id, invitee_id]):
+    if not all([conversation_id, sender_id, invitee_id]):
       logger.error(f"Missing required fields in group invitation data: {message_data}")
       return False
 
-    logger.info(f"Processing group invitation notification for group {group_id}")
+    logger.info(f"Processing group invitation notification for conversation {conversation_id}")
 
     # Get sender details
     sender_ref = db.collection('users').document(sender_id)
@@ -257,7 +257,7 @@ def process_group_invitation(message_data):
             title,
             body,
             {
-              'groupId': group_id,
+              'conversationId': conversation_id,
               'senderId': sender_id,
               'type': 'group_invitation'
             }
@@ -270,7 +270,7 @@ def process_group_invitation(message_data):
         title,
         body,
         {
-          'groupId': group_id,
+          'conversationId': conversation_id,
           'senderId': sender_id
         }
     )
