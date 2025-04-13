@@ -111,3 +111,8 @@ class ConversationMetadataUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     avatar_url: Optional[str] = None
+
+
+class AddMemberRequest(BaseModel):
+    """Request model for adding a member to a conversation"""
+    user_id: str
