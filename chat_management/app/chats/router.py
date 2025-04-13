@@ -25,7 +25,7 @@ async def get_chats(current_user: Annotated[AuthenticatedUser, Depends(get_curre
     user_phone_num = current_user.phoneNumber
     
     # Query chats where the user is a participant
-    chats_ref = firestore_db.collection('chats')
+    chats_ref = firestore_db.collection('conversations')
     query = chats_ref.where(filter=FieldFilter('participants', 'array_contains', user_phone_num)).order_by('lastMessageTime', direction='DESCENDING')
     
     # Get total count for pagination
@@ -71,7 +71,7 @@ async def create_chat(request: Request, body: CreateChatRequest):
     sorted_participants = sorted(body.participants)
     
     # Check if chat already exists between these participants
-    chats_ref = firestore_db.collection('chats')
+    chats_ref = firestore_db.collection('conversations')
     query = chats_ref.where('participants', '==', sorted_participants)
     existing_chats = list(query.stream())
     
@@ -94,7 +94,7 @@ async def create_chat(request: Request, body: CreateChatRequest):
     }
     
     # Store chat in Firestore
-    chat_ref = firestore_db.collection('chats').document(chat_id)
+    chat_ref = firestore_db.collection('conversations').document(chat_id)
     chat_ref.set(chat_data)
     
     chat = chat_ref.get().to_dict()

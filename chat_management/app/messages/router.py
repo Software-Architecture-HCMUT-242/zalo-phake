@@ -28,7 +28,7 @@ notification_service = NotificationService()
 # Store active WebSocket connections
 active_connections: Dict[str, Dict[str, WebSocket]] = {}
 
-@router.get('/chats/{chat_id}/messages', response_model=PaginatedResponse[Message])
+@router.get('/conversations/{chat_id}/messages', response_model=PaginatedResponse[Message])
 async def get_messages(chat_id: str,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
     pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)]):
@@ -36,7 +36,7 @@ async def get_messages(chat_id: str,
     Get paginated messages for a specific chat
     """
     # Verify user is part of this chat
-    chat_ref = firestore_db.collection('chats').document(chat_id)
+    chat_ref = firestore_db.collection('conversations').document(chat_id)
     chat = chat_ref.get()
 
     if not chat.exists:
@@ -47,7 +47,7 @@ async def get_messages(chat_id: str,
         raise HTTPException(status_code=403, detail="User is not a participant in this chat")
 
     # Query messages for this chat
-    messages_ref = firestore_db.collection('chats').document(chat_id).collection('messages')
+    messages_ref = firestore_db.collection('conversations').document(chat_id).collection('messages')
     query = messages_ref.order_by('timestamp', direction='DESCENDING')
 
     # Get total count for pagination
@@ -78,7 +78,7 @@ async def get_messages(chat_id: str,
         size=pagination.size
     )
 
-@router.post('/chats/{chat_id}/messages/{message_id}/read')
+@router.post('/conversations/{chat_id}/messages/{message_id}/read')
 async def mark_message_as_read(
     chat_id: str,
     message_id: str,
@@ -88,7 +88,7 @@ async def mark_message_as_read(
     Mark a message as read by the current user
     """
     # Verify user is part of this chat
-    chat_ref = firestore_db.collection('chats').document(chat_id)
+    chat_ref = firestore_db.collection('conversations').document(chat_id)
     chat = chat_ref.get()
 
     if not chat.exists:
@@ -99,7 +99,7 @@ async def mark_message_as_read(
         raise HTTPException(status_code=403, detail="User is not a participant in this chat")
 
     # Get the message
-    message_ref = firestore_db.collection('chats').document(chat_id).collection('messages').document(message_id)
+    message_ref = firestore_db.collection('conversations').document(chat_id).collection('messages').document(message_id)
     message = message_ref.get()
 
     if not message.exists:
@@ -124,7 +124,7 @@ async def mark_message_as_read(
 
     return {'status': 'success'}
 
-@router.post('/chats/{chat_id}/messages')
+@router.post('/conversations/{chat_id}/messages')
 async def send_message(
     chat_id: str,
     request: Request,
@@ -145,7 +145,7 @@ async def send_message(
         raise HTTPException(status_code=400, detail=f"Invalid message type. Must be one of: {[m.value for m in MessageType]}")
 
     # Verify user is part of this chat
-    chat_ref = firestore_db.collection('chats').document(chat_id)
+    chat_ref = firestore_db.collection('conversations').document(chat_id)
     chat = chat_ref.get()
 
     if not chat.exists:
@@ -167,7 +167,7 @@ async def send_message(
     }
 
     # Store message in Firestore
-    message_ref = firestore_db.collection('chats').document(chat_id).collection('messages').document(message_id)
+    message_ref = firestore_db.collection('conversations').document(chat_id).collection('messages').document(message_id)
     message_ref.set(message_data)
 
     # Update chat's last message info
@@ -236,7 +236,7 @@ async def broadcast_message(chat_id: str, message_id: str, sender_id: str, conte
     Broadcast a message to all participants in a chat
     """
     # Get chat participants
-    chat_ref = firestore_db.collection('chats').document(chat_id)
+    chat_ref = firestore_db.collection('conversations').document(chat_id)
     chat = chat_ref.get()
 
     if not chat.exists:
@@ -273,7 +273,7 @@ async def broadcast_event(chat_id: str, event: dict, sender_id: str):
     Broadcast an event to all participants in a chat
     """
     # Get chat participants
-    chat_ref = firestore_db.collection('chats').document(chat_id)
+    chat_ref = firestore_db.collection('conversations').document(chat_id)
     chat = chat_ref.get()
 
     if not chat.exists:

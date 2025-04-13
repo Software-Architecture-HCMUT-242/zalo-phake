@@ -71,7 +71,7 @@ class NotificationService:
                 return False
 
             # Get chat details for notification
-            chat_ref = firestore_db.collection('chats').document(chat_id)
+            chat_ref = firestore_db.collection('conversations').document(chat_id)
             chat = chat_ref.get()
 
             if not chat.exists:

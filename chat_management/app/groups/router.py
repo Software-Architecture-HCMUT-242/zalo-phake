@@ -55,7 +55,7 @@ async def create_group(
     }
 
     # Store in Firestore
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group_ref.set(group_data)
 
     # Get the created group
@@ -131,7 +131,7 @@ async def update_group(
     Only admins can update the group.
     """
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
     
     if not group.exists:
@@ -184,7 +184,7 @@ async def delete_group(
     Delete a group. Only admins can delete a group.
     """
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
     
     if not group.exists:
@@ -217,7 +217,7 @@ async def add_member(
     phone_number = member['phoneNumber']
 
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
 
     if not group.exists:
@@ -294,7 +294,7 @@ async def remove_member(
     Remove a member from the group. Admins can remove any member, members can remove themselves.
     """
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
     
     if not group.exists:
@@ -354,7 +354,7 @@ async def add_admin(
     phone_number = admin['phoneNumber']
     
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
     
     if not group.exists:
@@ -396,7 +396,7 @@ async def remove_admin(
     Remove admin privileges from a member. Only admins can remove other admins.
     """
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
     
     if not group.exists:
@@ -437,7 +437,7 @@ async def get_group(
     Get a group's details. Only members can see group details.
     """
     # Get the group
-    group_ref = firestore_db.collection('chats').document(group_id)
+    group_ref = firestore_db.collection('conversations').document(group_id)
     group = group_ref.get()
     
     if not group.exists:
