@@ -31,8 +31,18 @@ class NotificationService:
         Send a message to the SQS queue for asynchronous processing
         """
         try:
-            # Validate required fields
-            required_fields = ['event', 'chatId', 'messageId', 'senderId', 'content']
+            # Validate required fields based on event type
+            event_type = message_data.get('event')
+            
+            if event_type == 'new_message':
+                required_fields = ['event', 'conversationId', 'messageId', 'senderId', 'content']
+            elif event_type == 'group_invitation':
+                required_fields = ['event', 'conversationId', 'senderId', 'inviteeId']
+            elif event_type == 'friend_request':
+                required_fields = ['event', 'senderId', 'recipientId']
+            else:
+                required_fields = ['event']
+            
             for field in required_fields:
                 if field not in message_data:
                     logger.error(f"Missing required field: {field} in message data")
@@ -60,8 +70,8 @@ class NotificationService:
         This might be called directly or by a worker processing SQS messages
         """
         try:
-            # Handle both new and legacy field names
-            conversation_id = message_data.get('conversationId') or message_data.get('chatId')
+            # Extract necessary data from the payload
+            conversation_id = message_data.get('conversationId')
             message_id = message_data.get('messageId')
             sender_id = message_data.get('senderId')
             content = message_data.get('content')
@@ -142,6 +152,76 @@ class NotificationService:
             logger.error(f"Error processing new message notification: {str(e)}")
             return False
 
+    async def process_group_invitation(self, message_data):
+        """
+        Process a group invitation and send notification to the invitee
+        """
+        try:
+            # Extract necessary data from the payload
+            conversation_id = message_data.get('conversationId')
+            sender_id = message_data.get('senderId')
+            invitee_id = message_data.get('inviteeId')
+            group_name = message_data.get('groupName', 'a group')
+
+            if not (conversation_id and sender_id and invitee_id):
+                logger.error(f"Invalid group invitation data: {message_data}")
+                return False
+
+            # Get sender name
+            sender_ref = firestore_db.collection('users').document(sender_id)
+            sender = sender_ref.get()
+            sender_name = sender_id
+            if sender.exists:
+                sender_data = sender.to_dict()
+                sender_name = sender_data.get('name', sender_id)
+
+            # Check if invitee is online
+            user_ref = firestore_db.collection('users').document(invitee_id)
+            user = user_ref.get()
+
+            if not user.exists:
+                logger.error(f"Invitee {invitee_id} not found")
+                return False
+
+            user_data = user.to_dict()
+            is_online = user_data.get('isOnline', False)
+
+            # Prepare notification content
+            title = f"{sender_name}"
+            body = f"invited you to join {group_name}"
+
+            # If user is offline, send push notification
+            if not is_online:
+                # Check notification preferences
+                should_send_push = await self._check_notification_preferences(invitee_id, 'group_invitation')
+
+                if should_send_push:
+                    await self._send_push_notification(
+                        invitee_id,
+                        title,
+                        body,
+                        conversation_id
+                    )
+
+                # Store notification in Firestore regardless of push settings
+                self._store_notification(
+                    invitee_id,
+                    'group_invitation',
+                    title,
+                    body,
+                    {
+                        'conversationId': conversation_id,
+                        'senderId': sender_id,
+                        'type': 'group_invitation'
+                    }
+                )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error processing group invitation notification: {str(e)}")
+            return False
+
     async def _check_notification_preferences(self, user_id, notification_type):
         """
         Check if a user has enabled notifications for this type
@@ -180,7 +260,7 @@ class NotificationService:
             logger.error(f"Error checking notification preferences for user {user_id}: {str(e)}")
             return True  # Default to True in case of error
 
-    async def _send_push_notification(self, user_id, title, body, conversation_id, message_id):
+    async def _send_push_notification(self, user_id, title, body, conversation_id, message_id=None):
         """
         Send push notification to a user's devices
         """
@@ -220,6 +300,11 @@ class NotificationService:
                         device_tokens[device_type] = []
                     device_tokens[device_type].append(token)
 
+            # Prepare data payload
+            data_payload = {'conversationId': conversation_id}
+            if message_id:
+                data_payload['messageId'] = message_id
+
             # Send notifications through appropriate channels based on device type
             for platform, tokens in device_tokens.items():
                 try:
@@ -231,10 +316,7 @@ class NotificationService:
                                     title=title,
                                     body=body
                                 ),
-                                data={
-                                    'conversationId': conversation_id,
-                                    'messageId': message_id
-                                },
+                                data=data_payload,
                                 token=token
                             )
 
@@ -257,10 +339,7 @@ class NotificationService:
                                         'title': title,
                                         'body': body
                                     },
-                                    'data': {
-                                        'conversationId': conversation_id,
-                                        'messageId': message_id
-                                    }
+                                    'data': data_payload
                                 })
                             }
 
