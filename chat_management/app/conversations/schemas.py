@@ -88,7 +88,6 @@ class ConversationListItem(BaseModel):
     updated_at: datetime
 
 
-
 class ConversationMetadataUpdate(BaseModel):
     """Request model for updating conversation metadata"""
     name: Optional[str] = None
@@ -99,3 +98,26 @@ class ConversationMetadataUpdate(BaseModel):
 class AddMemberRequest(BaseModel):
     """Request model for adding a member to a conversation"""
     user_id: str
+
+
+from datetime import datetime
+from enum import Enum
+from typing import List
+
+from pydantic import BaseModel
+
+
+class MessageType(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+
+
+class Message(BaseModel):
+    messageId: str
+    senderId: str
+    content: str
+    messageType: MessageType
+    timestamp: datetime
+    readBy: List[str]

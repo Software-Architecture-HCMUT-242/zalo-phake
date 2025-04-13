@@ -11,7 +11,7 @@ from firebase_admin import firestore
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
 from ..dependencies import token_required, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
-from ..messages.schemas import Message, MessageType
+from .schemas import Message, MessageType
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
@@ -27,11 +27,12 @@ router = APIRouter(
 notification_service = NotificationService()
 connection_manager = get_connection_manager()
 
+
 @router.get('/{conversation_id}/messages', response_model=PaginatedResponse[Message])
 async def get_conversation_messages(
-    conversation_id: str,
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
-    pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)]
+        conversation_id: str,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
+        pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)]
 ):
     """
     Get paginated messages for a specific conversation
@@ -87,7 +88,7 @@ async def get_conversation_messages(
             msg_data = msg.to_dict()
             # Convert Firestore timestamps to datetime objects
             msg_data = convert_timestamps(msg_data)
-            
+
             # Create Message object
             messages.append(Message(
                 messageId=msg.id,
@@ -109,11 +110,12 @@ async def get_conversation_messages(
         size=pagination.size
     )
 
+
 @router.post('/{conversation_id}/messages')
 async def send_conversation_message(
-    conversation_id: str,
-    request: Request,
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+        conversation_id: str,
+        request: Request,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
 ):
     """
     Send a message to a specific conversation
@@ -137,7 +139,7 @@ async def send_conversation_message(
     except Exception as e:
         logger.error(f"Error parsing request body: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid request body")
-    
+
     content = data.get('content')
     message_type = data.get('messageType', 'text')
 
@@ -147,7 +149,8 @@ async def send_conversation_message(
 
     # Validate message type
     if message_type not in [m.value for m in MessageType]:
-        raise HTTPException(status_code=400, detail=f"Invalid message type. Must be one of: {[m.value for m in MessageType]}")
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid message type. Must be one of: {[m.value for m in MessageType]}")
 
     # Verify conversation exists and user is a participant
     conversation_ref = firestore_db.collection('conversations').document(conversation_id)
@@ -173,7 +176,8 @@ async def send_conversation_message(
 
     # Store message in Firestore
     try:
-        message_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages').document(message_id)
+        message_ref = firestore_db.collection('conversations').document(conversation_id).collection(
+            'messages').document(message_id)
         message_ref.set(message_data)
 
         # Update conversation's last message info
@@ -247,11 +251,12 @@ async def send_conversation_message(
         'status': 'sent'
     }
 
+
 @router.post('/{conversation_id}/messages/{message_id}/read')
 async def mark_message_as_read(
-    conversation_id: str,
-    message_id: str,
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+        conversation_id: str,
+        message_id: str,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
 ):
     """
     Mark a message as read by the current user
@@ -280,7 +285,8 @@ async def mark_message_as_read(
         raise HTTPException(status_code=403, detail="User is not a participant in this conversation")
 
     # Get the message
-    message_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages').document(message_id)
+    message_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages').document(
+        message_id)
     message = message_ref.get()
 
     if not message.exists:
@@ -302,12 +308,14 @@ async def mark_message_as_read(
             'messageId': message_id,
             'userId': current_user.phoneNumber
         }
-        await connection_manager.broadcast_to_conversation(read_event, conversation_id, skip_user_id=current_user.phoneNumber)
+        await connection_manager.broadcast_to_conversation(read_event, conversation_id,
+                                                           skip_user_id=current_user.phoneNumber)
     except Exception as e:
         logger.error(f"Error broadcasting read receipt: {str(e)}")
         # Don't fail the request if WebSocket notification fails
 
     return {'status': 'success'}
+
 
 async def broadcast_message(conversation_id: str, message_id: str, sender_id: str, content: str, message_type: str):
     """
@@ -330,6 +338,6 @@ async def broadcast_message(conversation_id: str, message_id: str, sender_id: st
         'messageType': message_type,
         'timestamp': datetime.now(timezone.utc).isoformat()
     }
-    
+
     # Use the connection manager to broadcast the message
     await connection_manager.broadcast_to_conversation(message_event, conversation_id, skip_user_id=sender_id)
