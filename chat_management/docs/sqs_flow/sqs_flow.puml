@@ -1,9 +1,9 @@
-@startuml SQS Flow for Offline Notification
+@startuml SQS Flow with Python Consumer for Offline Notification
 
 actor "User A" as UserA
 participant "API Instance B (FastAPI)" as InstB
 queue "AWS SQS Queue" as SQS
-participant "AWS Lambda (Notification Processor)" as Lambda
+participant "Python Consumer Service" as Consumer
 participant "Firestore" as FS
 participant "Push Notification Service (FCM/SNS)" as PNS
 actor "User B's Device (Offline)" as UserBDevice
@@ -16,35 +16,51 @@ activate FS
 FS --> InstB : Message Saved
 deactivate FS
 
-InstB -> SQS : Send Notification Task (msg details, participants)
+InstB -> SQS : Send Notification Task (msg details)
 note right: Uses sqs_utils.py logic \n[cite: chat_management/app/conversations/messages.py, chat_management/app/aws/sqs_utils.py]
 activate SQS
 SQS --> InstB : Task Queued
+
+note right of InstB
+  Instance B also publishes
+  event to Redis Pub/Sub
+  (See New Message diagram)
+end note
 deactivate InstB
+
 
 ... Later ...
 
-Lambda -> SQS : Poll/Receive Message
-activate Lambda
-SQS --> Lambda : Notification Task
-deactivate SQS
+Consumer -> SQS : Poll/Receive Message
+activate Consumer
+SQS --> Consumer : Notification Task (with ReceiptHandle)
 
-Lambda -> FS : Get User B Status & Device Tokens
-note right: Checks isOnline field \n[cite: chat_management/lambda/notification_processor.py]
+Consumer -> FS : Get User B Status & Device Tokens
+note right: Adapts logic from lambda/notification_processor.py \n[cite: chat_management/lambda/notification_processor.py]
 activate FS
-FS --> Lambda : User B is Offline, Tokens: [...]
+FS --> Consumer : User B is Offline, Tokens: [...]
 deactivate FS
 
-Lambda -> PNS : Send Push Notification (Payload, Tokens)
-note right: [cite: chat_management/lambda/notification_processor.py]
+Consumer -> PNS : Send Push Notification (Payload, Tokens)
+note right: Adapts logic from notification_processor.py / service.py \n[cite: chat_management/lambda/notification_processor.py, chat_management/app/notifications/service.py]
 activate PNS
-PNS --> Lambda : Notification Sent
-deactivate Lambda
+PNS --> Consumer : Notification Sent
+deactivate PNS
 
 PNS --> UserBDevice : Push Notification Delivered
 activate UserBDevice
 UserBDevice --> UserBDevice : Display Notification
 deactivate UserBDevice
-deactivate PNS
+
+Consumer -> FS : Store Notification Record
+activate FS
+FS --> Consumer : Record Stored
+deactivate FS
+
+Consumer -> SQS : Delete Message (using ReceiptHandle)
+note right: Uses client.py logic \n[cite: chat_management/app/aws/client.py]
+SQS --> Consumer : Message Deleted
+deactivate SQS
+deactivate Consumer
 
 @enduml

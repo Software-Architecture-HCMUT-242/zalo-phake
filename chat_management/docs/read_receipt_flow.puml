@@ -1,13 +1,13 @@
 @startuml Read Receipt Flow
 actor "User A" as UserA
-participant "Instance A (FastAPI)" as InstA
+participant "API Instance A (FastAPI)" as InstA
 participant "Firestore" as FS
 participant "Redis Pub/Sub" as Redis
-participant "Instance B (FastAPI)" as InstB
-actor "User B" as UserB
+participant "API Instance B (FastAPI)" as InstB
+actor "User B (Online)" as UserB
 
 UserA -> InstA : WebSocket Send (message_read, {conv_id}, {msg_id})
-note right: Or via HTTP POST
+note right: Or triggered via HTTP POST
 activate InstA
 InstA -> FS : Update Message (readBy), Update User Unread Count
 activate FS

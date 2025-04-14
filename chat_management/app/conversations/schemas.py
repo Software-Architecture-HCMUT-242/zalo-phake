@@ -114,6 +114,12 @@ class MessageType(str, Enum):
     AUDIO = "audio"
 
 
+class MessageCreate(BaseModel):
+    """Request body for creating a new message"""
+    content: str
+    messageType: str = "text"
+
+
 class Message(BaseModel):
     messageId: str
     senderId: str

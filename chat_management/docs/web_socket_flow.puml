@@ -1,6 +1,6 @@
 @startuml WebSocket Connection
 actor User
-participant "Instance A (FastAPI)" as InstA
+participant "API Instance A (FastAPI)" as InstA
 participant "Redis" as Redis
 participant "Firestore" as FS
 

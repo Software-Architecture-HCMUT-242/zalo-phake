@@ -12,19 +12,27 @@ This project provides a scalable backend service for a chat application, support
 - **Group Chat Management**: Create, update, and delete group chats
 - **Member Administration**: Add/remove members from groups, promote/demote admin status
 - **Message Handling**: Send, retrieve, and manage messages
-- **Real-time Notifications**: Using WebSockets for real-time updates
+- **Real-time Notifications**: Using WebSockets for real-time updates and offline notifications
+- **Notification Management**: Push notifications via Firebase Cloud Messaging and AWS SNS
+- **Offline Message Processing**: AWS SQS and Lambda for handling offline notifications
 - **Pagination**: Efficient data retrieval with pagination support
+- **Device Token Management**: Register and manage device tokens for push notifications
 
 ## Architecture & Flow
 
 ### Data Storage
 - Firebase Firestore is used as the primary database
-- Chat data is organized in collections for chats, messages, and users
+- Chat data is organized in collections for chats, messages, users, and notifications
 - Real-time updates are supported through Firebase's real-time capabilities
 
 ### Authentication
 - JWT-based authentication for production use
 - Development mode supports Vietnamese phone number validation for easier testing
+
+### AWS Integration
+- SQS for message queueing and offline notification delivery
+- Lambda for processing notification events asynchronously
+- SNS for web push notifications
 
 ### API Layers
 1. **Router Layer**: FastAPI routes for handling HTTP requests
@@ -34,8 +42,15 @@ This project provides a scalable backend service for a chat application, support
 ### Message Flow
 1. User creates a chat or sends to an existing chat
 2. Message is stored in Firestore
-3. Notifications are sent to participants
-4. Recipients can retrieve messages with pagination
+3. Online users receive real-time updates via WebSockets
+4. Offline users receive notifications through SQS → Lambda → FCM/SNS
+5. Recipients can retrieve messages with pagination
+
+### WebSocket Flow
+1. User connects to WebSocket endpoint with their user ID
+2. Connection is maintained for real-time updates
+3. Events like new messages, typing indicators, and read receipts are broadcast
+4. Connections are tracked to determine online/offline status
 
 ## Development Setup
 
@@ -43,6 +58,7 @@ This project provides a scalable backend service for a chat application, support
 - Python 3.10+
 - Docker and Docker Compose
 - Firebase account and credentials
+- AWS account (for production environment)
 
 ### Local Setup
 
@@ -58,10 +74,11 @@ cd chat_management
 pip install -r requirements.txt
 ```
 
-3. Start local services (if needed):
+3. Start local services:
 ```bash
 docker compose -f chat_management/local/docker-compose.yml up -d
 ```
+   This will start ElasticMQ as a local SQS implementation.
 
 4. Run the application:
 ```bash
@@ -99,19 +116,33 @@ During development, the system uses a simplified authentication approach:
 - `POST /api/v1/messages` - Send a message
 - `GET /api/v1/chats/{chat_id}/messages` - Get messages from a specific chat
 
+### Notification Management
+- `GET /api/v1/notifications` - Get user's notifications
+- `PUT /api/v1/notifications/{notification_id}/read` - Mark notification as read
+- `PUT /api/v1/notification-preferences` - Update notification preferences
+- `POST /api/v1/device-tokens` - Register device token for push notifications
+
+### WebSocket
+- `WebSocket /ws/{user_id}` - Real-time communication endpoint
+
 ## Environment Variables
 
 - `AWS_REGION`: AWS region (default: ap-southeast-1)
 - `AWS_ACCESS_KEY_ID`: AWS access key
 - `AWS_SECRET_ACCESS_KEY`: AWS secret key
 - `SQS_URL`: AWS SQS URL for message queueing
-- `FIREBASE_SECRET`: Firebase credentials secret
+- `SNS_TOPIC_ARN`: AWS SNS topic ARN for web notifications
+- `SNS_PLATFORM_APPLICATION_ARN`: AWS SNS platform application ARN
+- `LAMBDA_FUNCTION_NAME`: AWS Lambda function name for notification processing
+- `FIREBASE_SECRET`: Firebase credentials secret (JSON)
+- `FIREBASE_DB_URL`: Firebase database URL
 
 ## Deployment
 
 The application is configured for deployment to AWS ECS using Fargate:
 
 - Task definition is in `deployments/task-definition.json`
+- Lambda function for notification processing is in `lambda/notification_processor.py`
 - CI/CD automation can be built around this configuration
 
 ## License

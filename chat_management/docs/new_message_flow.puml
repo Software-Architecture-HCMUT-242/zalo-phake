@@ -1,10 +1,10 @@
-@startuml New Message Flow
+@startuml New Message Flow (Online Recipient)
 actor "User A" as UserA
-participant "Instance B (FastAPI)" as InstB
+participant "API Instance B (FastAPI)" as InstB
 participant "Firestore" as FS
 participant "Redis Pub/Sub" as Redis
-participant "Instance C (FastAPI)" as InstC
-actor "User B" as UserB
+participant "API Instance C (FastAPI)" as InstC
+actor "User B (Online)" as UserB
 
 UserA -> InstB : POST /conversations/{conv_id}/messages
 activate InstB
@@ -14,12 +14,19 @@ FS --> InstB : Message Saved (msg_id)
 InstB -> FS : Update Conversation (lastMessage)
 FS --> InstB : Conversation Updated
 deactivate FS
+
 InstB -> Redis : PUBLISH(channel: conversation:{conv_id}, event: new_message{...})
 activate Redis
 Redis --> InstB : Published
-deactivate Redis
+
+note right of InstB
+  Instance B also sends task
+  to SQS for offline handling
+  (See SQS diagram)
+end note
+
 Redis --> InstC : Receive(channel: conversation:{conv_id}, event: new_message{...})
-deactivate InstB
+deactivate Redis
 activate InstC
 InstC -> InstC : Check local connections for User B in {conv_id}
 InstC -> UserB : WebSocket Send (new_message{...})
@@ -27,10 +34,6 @@ activate UserB
 deactivate InstC
 UserB --> UserB : Display Message
 deactivate UserB
-
-note right of InstB
-  Offline push notifications (SQS/Lambda)
-  can also be triggered here if needed.
-end note
+deactivate InstB
 
 @enduml

@@ -3,7 +3,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Dict
+from typing import Annotated, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from firebase_admin import firestore
@@ -11,7 +11,7 @@ from firebase_admin import firestore
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
-from .schemas import Message, MessageType
+from .schemas import Message, MessageType, MessageCreate
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
@@ -115,15 +115,15 @@ async def get_conversation_messages(
 @router.post('/{conversation_id}/messages')
 async def send_conversation_message(
         conversation_id: str,
-        request: Request,
+        message: MessageCreate,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
 ):
     """
-    Send a message to a specific conversation
+    Send a message to a specific conversation using the new message flow architecture
     
     Args:
         conversation_id: The ID of the conversation to send the message to
-        request: The HTTP request containing the message data
+        message: The message creation data (content and type)
         current_user: The authenticated user making the request
         
     Returns:
@@ -133,18 +133,12 @@ async def send_conversation_message(
         400: If content is missing or message type is invalid
         403: If the user is not a participant in the conversation
         404: If the conversation doesn't exist
+        500: If there's a database or other error
     """
-    # Parse request data
-    try:
-        data = await request.json()
-    except Exception as e:
-        logger.error(f"Error parsing request body: {str(e)}")
-        raise HTTPException(status_code=400, detail="Invalid request body")
-
-    content = data.get('content')
-    message_type = data.get('messageType', 'text')
-
     # Validate request data
+    content = message.content
+    message_type = message.messageType
+
     if not content:
         raise HTTPException(status_code=400, detail="Content is required")
 
@@ -154,15 +148,19 @@ async def send_conversation_message(
                             detail=f"Invalid message type. Must be one of: {[m.value for m in MessageType]}")
 
     # Verify conversation exists and user is a participant
-    conversation_ref = firestore_db.collection('conversations').document(conversation_id)
-    conversation = conversation_ref.get()
+    try:
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+        conversation = conversation_ref.get()
 
-    if not conversation.exists:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        if not conversation.exists:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
-    conversation_data = conversation.to_dict()
-    if current_user.phoneNumber not in conversation_data.get('participants', []):
-        raise HTTPException(status_code=403, detail="User is not a participant in this conversation")
+        conversation_data = conversation.to_dict()
+        if current_user.phoneNumber not in conversation_data.get('participants', []):
+            raise HTTPException(status_code=403, detail="User is not a participant in this conversation")
+    except Exception as e:
+        logger.error(f"Error validating conversation: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to access conversation data")
 
     # Create message
     message_id = str(uuid.uuid4())
@@ -175,77 +173,81 @@ async def send_conversation_message(
         'readBy': [current_user.phoneNumber]  # Sender has read their own message
     }
 
-    # Store message in Firestore
+    # Step 1: Save message to Firestore
     try:
         message_ref = firestore_db.collection('conversations').document(conversation_id).collection(
             'messages').document(message_id)
         message_ref.set(message_data)
-
-        # Update conversation's last message info
-        conversation_ref.update({
-            'lastMessageTime': firestore.SERVER_TIMESTAMP,
-            'lastMessagePreview': content[:50] + ('...' if len(content) > 50 else '')
-        })
+        logger.info(f"Message {message_id} saved to Firestore for conversation {conversation_id}")
     except Exception as e:
         logger.error(f"Error storing message in Firestore: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to send message")
+        raise HTTPException(status_code=500, detail="Failed to save message")
 
-    # Send real-time notifications via WebSocket
+    # Step 2: Update conversation metadata
     try:
-        await broadcast_message(conversation_id, message_id, current_user.phoneNumber, content, message_type)
+        # Create a preview (truncate if longer than 50 chars)
+        preview = content[:50] + ('...' if len(content) > 50 else '')
+        conversation_ref.update({
+            'lastMessageTime': firestore.SERVER_TIMESTAMP,
+            'lastMessagePreview': preview,
+            'lastMessageType': message_type,
+            'lastMessageSenderId': current_user.phoneNumber
+        })
+        logger.info(f"Conversation {conversation_id} metadata updated")
     except Exception as e:
-        logger.error(f"Error broadcasting message via WebSocket: {str(e)}")
-        # Don't fail the request if WebSocket notification fails
-
-    # Send push notifications
+        logger.error(f"Error updating conversation metadata: {str(e)}")
+        # Continue processing even if metadata update fails
+    
+    # Step 3: Publish to Redis Pub/Sub for real-time notifications
     try:
-        participants = conversation_data.get('participants', [])
-        notification_sent = False
-
-        # Try SQS if available
-        if is_sqs_available():
-            try:
-                notification_sent = await send_chat_message_notification(
-                    chat_id=conversation_id,  # SQS utility still uses chat_id parameter name
-                    message_id=message_id,
-                    sender_id=current_user.phoneNumber,
-                    content=content,
-                    message_type=message_type,
-                    participants=participants
-                )
-
-                if notification_sent:
-                    logger.info(f"Notification for message {message_id} sent to SQS queue")
-                else:
-                    logger.warning(f"Failed to send notification for message {message_id} to SQS queue")
-            except Exception as e:
-                logger.error(f"Error sending notification to SQS: {str(e)}")
-                notification_sent = False
-
-        # If SQS is not available or notification failed, use direct processing
-        if not notification_sent:
-            logger.info("Using direct notification processing as fallback")
-            try:
-                # Prepare message for direct notification processing
-                notification_data = {
-                    'event': 'new_message',
-                    'conversationId': conversation_id,  # Updated to use conversationId
-                    'messageId': message_id,
-                    'senderId': current_user.phoneNumber,
-                    'content': content,
-                    'messageType': message_type,
-                    'timestamp': now.isoformat(),
-                    'participants': participants
-                }
-
-                # Process notification directly (asynchronously)
-                asyncio.create_task(notification_service.process_new_message(notification_data))
-            except Exception as e:
-                logger.error(f"Error in direct notification processing: {str(e)}")
+        from ..redis import redis_client
+        
+        # Create message event data for publishing
+        message_event = {
+            'event': 'new_message',
+            'conversationId': conversation_id,
+            'messageId': message_id,
+            'senderId': current_user.phoneNumber,
+            'content': content,
+            'messageType': message_type,
+            'timestamp': now.isoformat(),
+            'participants': conversation_data.get('participants', [])
+        }
+        
+        # Publish to Redis channel for this conversation
+        channel = f"conversation:{conversation_id}"
+        pub_result = await redis_client.publish(channel, message_event)
+        
+        if pub_result:
+            logger.info(f"Message event published to Redis channel {channel}")
+        else:
+            logger.warning(f"Failed to publish message event to Redis channel {channel}")
+            # Fallback to direct WebSocket broadcast if Redis publishing failed
+            await broadcast_message(conversation_id, message_id, current_user.phoneNumber, content, message_type)
     except Exception as e:
-        logger.error(f"Error processing notifications: {str(e)}")
-        # Don't fail the request if notification processing fails
-
+        logger.error(f"Error with Redis Pub/Sub: {str(e)}")
+        # Fallback to direct WebSocket broadcast if Redis is not available
+        try:
+            await broadcast_message(conversation_id, message_id, current_user.phoneNumber, content, message_type)
+        except Exception as ws_error:
+            logger.error(f"Error broadcasting message via WebSocket: {str(ws_error)}")
+    
+    # Step 4: Send offline push notifications via SQS/Lambda if needed
+    participants = conversation_data.get('participants', [])
+    # Run this in a background task to not block the API response
+    asyncio.create_task(
+        process_offline_notifications(
+            conversation_id=conversation_id,
+            message_id=message_id,
+            sender_id=current_user.phoneNumber,
+            content=content,
+            message_type=message_type,
+            timestamp=now,
+            participants=participants
+        )
+    )
+    
+    # Return success response
     return {
         'messageId': message_id,
         'timestamp': now.isoformat(),
@@ -320,7 +322,7 @@ async def mark_message_as_read(
 
 async def broadcast_message(conversation_id: str, message_id: str, sender_id: str, content: str, message_type: str):
     """
-    Broadcast a message to all participants in a conversation
+    Broadcast a message to all participants in a conversation using WebSocket
     
     Args:
         conversation_id: The ID of the conversation
@@ -342,3 +344,67 @@ async def broadcast_message(conversation_id: str, message_id: str, sender_id: st
 
     # Use the connection manager to broadcast the message
     await connection_manager.broadcast_to_conversation(message_event, conversation_id, skip_user_id=sender_id)
+    
+
+async def process_offline_notifications(conversation_id: str, message_id: str, sender_id: str, 
+                                        content: str, message_type: str, timestamp: datetime,
+                                        participants: List[str]):
+    """
+    Process offline notifications for a message
+    This function handles SQS queue sending for offline users who aren't connected via WebSocket
+    
+    Args:
+        conversation_id: The ID of the conversation
+        message_id: The ID of the message
+        sender_id: The ID of the sender
+        content: The message content
+        message_type: The message type
+        timestamp: The message timestamp
+        participants: List of participant IDs
+    """
+    notification_sent = False
+    
+    try:
+        # Try SQS if available
+        if is_sqs_available():
+            try:
+                notification_sent = await send_chat_message_notification(
+                    chat_id=conversation_id,
+                    message_id=message_id,
+                    sender_id=sender_id,
+                    content=content,
+                    message_type=message_type,
+                    participants=participants
+                )
+
+                if notification_sent:
+                    logger.info(f"Notification for message {message_id} sent to SQS queue")
+                else:
+                    logger.warning(f"Failed to send notification for message {message_id} to SQS queue")
+            except Exception as e:
+                logger.error(f"Error sending notification to SQS: {str(e)}")
+                notification_sent = False
+
+        # If SQS is not available or notification failed, use direct processing
+        if not notification_sent:
+            logger.info("Using direct notification processing as fallback")
+            try:
+                # Prepare message for direct notification processing
+                notification_data = {
+                    'event': 'new_message',
+                    'conversationId': conversation_id,
+                    'messageId': message_id,
+                    'senderId': sender_id,
+                    'content': content,
+                    'messageType': message_type,
+                    'timestamp': timestamp.isoformat(),
+                    'participants': participants
+                }
+
+                # Process notification directly
+                await notification_service.process_new_message(notification_data)
+            except Exception as e:
+                logger.error(f"Error in direct notification processing: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error processing offline notifications: {str(e)}")
+        # Don't fail the request if notification processing fails
