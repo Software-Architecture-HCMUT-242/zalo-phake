@@ -146,6 +146,10 @@ class ConnectionManager:
   async def handle_typing_notification(self, conversation_id: str, user_id: str):
     """
     Broadcast typing notification to conversation participants
+    
+    Args:
+        conversation_id: The ID of the conversation where typing is occurring
+        user_id: The ID of the user who is typing
     """
     typing_event = {
       'event': 'typing',
@@ -156,15 +160,62 @@ class ConnectionManager:
 
   async def handle_read_receipt(self, conversation_id: str, message_id: str, user_id: str):
     """
-    Broadcast read receipt to conversation participants
+    Broadcast read receipt to conversation participants and update message status in database
+    
+    Args:
+        conversation_id: The ID of the conversation containing the message
+        message_id: The ID of the message that was read
+        user_id: The ID of the user who read the message
     """
-    read_event = {
-      'event': 'message_read',
-      'conversationId': conversation_id,
-      'messageId': message_id,
-      'userId': user_id
-    }
-    await self.broadcast_to_conversation(read_event, conversation_id, skip_user_id=user_id)
+    # Update the message read status in Firestore
+    try:
+      # Get the message reference
+      message_ref = firestore_db.collection('conversations').document(conversation_id) \
+                               .collection('messages').document(message_id)
+      
+      # Update the read status in a transaction to ensure consistency
+      @firestore.transactional
+      def update_read_status(transaction, message_ref):
+        message = message_ref.get(transaction=transaction)
+        if not message.exists:
+          logger.error(f"Message {message_id} not found in conversation {conversation_id}")
+          return False
+        
+        message_data = message.to_dict()
+        read_by = message_data.get('readBy', [])
+        
+        # Only update if the user hasn't already read the message
+        if user_id not in read_by:
+          read_by.append(user_id)
+          transaction.update(message_ref, {'readBy': read_by})
+          logger.info(f"Updated read status for message {message_id} by user {user_id}")
+          return True
+        return False
+      
+      # Execute the transaction
+      transaction = firestore_db.transaction()
+      was_updated = update_read_status(transaction, message_ref)
+      
+      # Broadcast read receipt to other participants if status was updated
+      if was_updated:
+        read_event = {
+          'event': 'message_read',
+          'conversationId': conversation_id,
+          'messageId': message_id,
+          'userId': user_id
+        }
+        await self.broadcast_to_conversation(read_event, conversation_id, skip_user_id=user_id)
+      
+    except Exception as e:
+      logger.error(f"Error updating read receipt in database: {str(e)}")
+      # Still broadcast the event even if database update fails
+      read_event = {
+        'event': 'message_read',
+        'conversationId': conversation_id,
+        'messageId': message_id,
+        'userId': user_id
+      }
+      await self.broadcast_to_conversation(read_event, conversation_id, skip_user_id=user_id)
 
   def get_user_connection_count(self, user_id: str) -> int:
     """
@@ -191,3 +242,51 @@ class ConnectionManager:
     Get the total number of WebSocket connections
     """
     return sum(len(connections) for connections in self.active_connections.values())
+    
+  async def handle_user_activity(self, user_id: str, activity_type: str, metadata: dict = None):
+    """
+    Update user activity status and broadcast if necessary
+    
+    Args:
+        user_id: The ID of the user performing the activity
+        activity_type: Type of activity (e.g., 'status_change', 'profile_update')
+        metadata: Additional information about the activity
+    """
+    if not metadata:
+      metadata = {}
+    
+    logger.info(f"Handling user activity: {activity_type} for user {user_id}")
+    
+    try:
+      # Update user activity timestamp
+      user_ref = firestore_db.collection('users').document(user_id)
+      await asyncio.to_thread(
+        user_ref.update,
+        {
+          'lastActive': firestore.SERVER_TIMESTAMP,
+          'lastActivityType': activity_type
+        }
+      )
+      
+      # If this is a status change, broadcast to relevant conversations
+      if activity_type == 'status_change' and 'status' in metadata:
+        status_event = {
+          'event': 'user_status_change',
+          'userId': user_id,
+          'status': metadata['status']
+        }
+        
+        # Get all conversations this user participates in
+        conversations_query = firestore_db.collection('conversations') \
+                              .where('participants', 'array_contains', user_id) \
+                              .stream()
+        
+        # Convert to a list to avoid async issues with the query
+        conversations = [doc.id for doc in await asyncio.to_thread(list, conversations_query)]
+        
+        # Broadcast status change to all conversations
+        for conversation_id in conversations:
+          await self.broadcast_to_conversation(status_event, conversation_id, skip_user_id=user_id)
+          
+    except Exception as e:
+      logger.error(f"Error handling user activity: {str(e)}")

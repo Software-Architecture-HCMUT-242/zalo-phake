@@ -1,9 +1,11 @@
 @startuml WebSocket Connection
 actor User
 participant "API Instance A (FastAPI)" as InstA
+participant "API Instance B (FastAPI)" as InstB
 participant "Redis" as Redis
 participant "Firestore" as FS
 
+' Connection and Setup Flow
 User -> InstA : WebSocket Connect (/ws/{user_id})
 activate InstA
 InstA -> FS : Update User Status (isOnline=true, lastActive=now)
@@ -19,6 +21,79 @@ activate Redis
 Redis --> InstA : Subscribed
 deactivate Redis
 InstA --> User : Connection Accepted
+deactivate InstA
+
+' Heartbeat Flow
+User -> InstA : Send Heartbeat Event
+activate InstA
+InstA -> FS : Update lastActive Timestamp
+activate FS
+FS --> InstA : Updated
+deactivate FS
+InstA --> User : Heartbeat Acknowledgment
+deactivate InstA
+
+' Status Change Flow via WebSocket
+User -> InstA : Send Status Change Event
+activate InstA
+InstA -> FS : Update User Status and lastActive
+activate FS
+FS --> InstA : Status Updated
+deactivate FS
+InstA -> Redis : Broadcast Status Change
+activate Redis
+Redis -> InstB : Forward Status Change to Other Instances
+InstB -> User : Notify Other User's Devices
+Redis --> InstA : Broadcast Complete
+deactivate Redis
+InstA --> User : Status Change Acknowledgment
+deactivate InstA
+
+' Status Change Flow via REST API
+User -> InstA : HTTP POST /api/user/status
+activate InstA
+InstA -> InstA : Validate Request
+InstA -> FS : Update User Status and lastActive
+activate FS
+FS --> InstA : Status Updated
+deactivate FS
+InstA -> Redis : Broadcast Status Change
+activate Redis
+Redis -> InstB : Forward Status Change to Other Instances
+InstB -> User : Notify Other User's Devices
+Redis --> InstA : Broadcast Complete
+deactivate Redis
+InstA --> User : HTTP 200 OK with Success Message
+deactivate InstA
+
+' Read Receipt Flow
+User -> InstA : Send Message Read Event
+activate InstA
+InstA -> FS : Update Message Read Status (Transaction)
+activate FS
+FS --> InstA : Read Status Updated
+deactivate FS
+InstA -> Redis : Broadcast Read Receipt
+activate Redis
+Redis -> InstB : Forward Read Receipt to Other Instances
+InstB -> User : Notify Other User's Devices
+Redis --> InstA : Broadcast Complete
+deactivate Redis
+InstA --> User : Read Receipt Acknowledgment
+deactivate InstA
+
+' Disconnect Flow
+User -> InstA : WebSocket Disconnect
+activate InstA
+InstA -> Redis : Remove Connection Info
+activate Redis
+Redis --> InstA : Connection Removed
+deactivate Redis
+InstA -> InstA : Check If All User Connections Closed
+InstA -> FS : Set User Offline (After Grace Period)
+activate FS
+FS --> InstA : Status Updated
+deactivate FS
 deactivate InstA
 
 @enduml

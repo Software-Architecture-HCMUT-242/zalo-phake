@@ -1,14 +1,16 @@
 import asyncio
 import json
 import logging
+from typing import Optional, Dict, Any
 
 from app.phone_utils import isVietnamesePhoneNumber
 from app.service_env import Environment
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore
 
 from .websocket_manager import ConnectionManager
 from ..firebase import firestore_db
+from ..dependencies import decode_token
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +68,35 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             logger.warning(f"Deprecated 'chatId' field used instead of 'conversationId' in message_read event")
 
         elif event_type == 'heartbeat':
-          # Update last active time for the user
-          try:
-            user_ref = firestore_db.collection('users').document(user_id)
-            user_ref.update({
-              'lastActive': firestore.SERVER_TIMESTAMP
-            })
-          except Exception as e:
-            logger.error(f"Error updating lastActive: {str(e)}")
+          # Update last active time for the user using the handle_user_activity method
+          await connection_manager.handle_user_activity(
+            user_id=user_id, 
+            activity_type='heartbeat'
+          )
 
           # Send heartbeat acknowledgment
           await websocket.send_text(json.dumps({'event': 'heartbeat_ack'}))
+          
+        elif event_type == 'status_change':
+          # Handle user status change (available, away, busy, etc.)
+          status = message.get('status')
+          if status:
+            await connection_manager.handle_user_activity(
+              user_id=user_id, 
+              activity_type='status_change',
+              metadata={'status': status}
+            )
+            # Acknowledge status change
+            await websocket.send_text(json.dumps({
+              'event': 'status_change_ack',
+              'status': status
+            }))
+          else:
+            logger.warning(f"Missing status in status_change event from user {user_id}")
+            await websocket.send_text(json.dumps({
+              'event': 'error',
+              'message': 'Missing status parameter'
+            }))
 
       except json.JSONDecodeError:
         logger.error(f"Invalid JSON received from client: {data}")
@@ -99,3 +119,114 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 # Export the connection manager so it can be used by other modules
 def get_connection_manager():
   return connection_manager
+
+
+# HTTP endpoints for WebSocket-related operations
+@router.post("/user/status", status_code=status.HTTP_200_OK)
+async def update_user_status(status_data: Dict[str, Any], current_user = Depends(decode_token)):
+  """
+  Update a user's status and broadcast to relevant conversations
+  
+  Args:
+      status_data: Dictionary containing 'status' field with the new status value
+      current_user: The authenticated user (from dependency)
+  
+  Returns:
+      Success message
+  
+  Raises:
+      HTTPException: If request is invalid or if an error occurs during processing
+  """
+  if not current_user:
+    raise HTTPException(
+      status_code=status.HTTP_401_UNAUTHORIZED,
+      detail="Authentication required"
+    )
+  
+  user_id = current_user.phoneNumber
+  
+  # Validate status data
+  if not status_data or 'status' not in status_data:
+    raise HTTPException(
+      status_code=status.HTTP_400_BAD_REQUEST,
+      detail="Missing required 'status' field"
+    )
+  
+  status_value = status_data.get('status')
+  valid_statuses = ['available', 'away', 'busy', 'invisible', 'offline']
+  
+  if status_value not in valid_statuses:
+    raise HTTPException(
+      status_code=status.HTTP_400_BAD_REQUEST,
+      detail=f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"
+    )
+  
+  try:
+    # Update user status in database
+    user_ref = firestore_db.collection('users').document(user_id)
+    await asyncio.to_thread(
+      user_ref.update,
+      {
+        'status': status_value,
+        'lastActive': firestore.SERVER_TIMESTAMP,
+        'lastActivityType': 'status_change'
+      }
+    )
+    
+    # Broadcast status change through WebSockets
+    await connection_manager.handle_user_activity(
+      user_id=user_id,
+      activity_type='status_change',
+      metadata={'status': status_value}
+    )
+    
+    return {"message": f"Status updated to '{status_value}'"}
+  
+  except Exception as e:
+    logger.error(f"Error updating user status: {str(e)}")
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="Failed to update status. Please try again."
+    )
+
+
+@router.get("/connections/info", status_code=status.HTTP_200_OK)
+async def get_connection_info(current_user = Depends(decode_token)):
+  """
+  Get information about the current user's WebSocket connections
+  
+  Args:
+      current_user: The authenticated user (from dependency)
+  
+  Returns:
+      Connection information including count and status
+  
+  Raises:
+      HTTPException: If request is invalid or if an error occurs during processing
+  """
+  if not current_user:
+    raise HTTPException(
+      status_code=status.HTTP_401_UNAUTHORIZED,
+      detail="Authentication required"
+    )
+  
+  user_id = current_user.phoneNumber
+  
+  try:
+    # Get connection counts
+    user_connection_count = connection_manager.get_user_connection_count(user_id)
+    total_users = connection_manager.get_connected_users_count()
+    
+    return {
+      "user_id": user_id,
+      "active_connections": user_connection_count,
+      "is_connected": connection_manager.is_user_connected(user_id),
+      "total_connected_users": total_users
+    }
+    
+  except Exception as e:
+    logger.error(f"Error retrieving connection info: {str(e)}")
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail="Failed to retrieve connection information."
+    )
