@@ -17,3 +17,4 @@ google-crc32c==1.7.0
 google-resumable-media==2.7.2
 googleapis-common-protos==1.69.2
 pydantic-settings==2.8.1
+redis==3.5.3

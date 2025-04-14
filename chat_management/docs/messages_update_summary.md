@@ -4,9 +4,9 @@ This document provides a summary of the updates made to the messages module to i
 
 ## Key Changes
 
-1. **Redis Integration**:
-   - Added Redis PubSub for message distribution across API instances
-   - Implemented error handling and fallback mechanisms if Redis is unavailable
+1. **AWS ElastiCache Integration**:
+   - Added AWS ElastiCache for Redis PubSub for message distribution across API instances
+   - Implemented error handling and fallback mechanisms if AWS ElastiCache is unavailable
    - Added instanceId to messages for cross-instance message tracking
 
 2. **Async/Await Pattern**:
@@ -18,11 +18,11 @@ This document provides a summary of the updates made to the messages module to i
    - Ensures data consistency even with concurrent updates
 
 4. **Smart Notification Delivery**:
-   - Checks user online status in Redis before sending offline notifications
+   - Checks user online status in AWS ElastiCache before sending offline notifications
    - Only sends push notifications to users without active WebSocket connections
 
 5. **Fallback Mechanisms**:
-   - Direct WebSocket broadcast if Redis is unavailable
+   - Direct WebSocket broadcast if AWS ElastiCache is unavailable
    - Graceful degradation to ensure message delivery 
 
 6. **New API Endpoint**:
@@ -45,23 +45,23 @@ This document provides a summary of the updates made to the messages module to i
 1. Validate request and permissions
 2. Save message to Firestore
 3. Update conversation metadata
-4. Publish message event to Redis
+4. Publish message event to AWS ElastiCache
 5. Process offline notifications (in background)
 
 ### Read Receipt Flow
 
 1. Validate request and permissions
 2. Update read status using Firestore transaction
-3. Publish read receipt event to Redis
+3. Publish read receipt event to AWS ElastiCache
 
 ### Typing Notification Flow 
 
 1. Validate request and permissions
-2. Publish typing event to Redis
+2. Publish typing event to AWS ElastiCache
 
 ### Offline Notification Processing
 
-1. Check Redis for user online status
+1. Check AWS ElastiCache for user online status
 2. Filter out online users from notification list
 3. Send SQS notification if available
 4. Fall back to direct notification processing if needed
@@ -72,5 +72,5 @@ The implementation ensures:
 - Data consistency with transactions
 - Fault tolerance with fallback mechanisms
 - Proper error handling for all operations
-- Cross-instance message distribution via Redis
+- Cross-instance message distribution via AWS ElastiCache
 - Efficient resource usage with async/await

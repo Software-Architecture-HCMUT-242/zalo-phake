@@ -2,7 +2,7 @@
 actor "User A" as UserA
 participant "API Instance B (FastAPI)" as InstB
 participant "Firestore" as FS
-participant "Redis Pub/Sub" as Redis
+participant "AWS ElastiCache (Redis Pub/Sub)" as ElastiCache
 participant "API Instance C (FastAPI)" as InstC
 actor "User B (Online)" as UserB
 
@@ -15,9 +15,9 @@ InstB -> FS : Update Conversation (lastMessage)
 FS --> InstB : Conversation Updated
 deactivate FS
 
-InstB -> Redis : PUBLISH(channel: conversation:{conv_id}, event: new_message{...})
-activate Redis
-Redis --> InstB : Published
+InstB -> ElastiCache : PUBLISH(channel: conversation:{conv_id}, event: new_message{...})
+activate ElastiCache
+ElastiCache --> InstB : Published
 
 note right of InstB
   Instance B also sends task
@@ -25,8 +25,8 @@ note right of InstB
   (See SQS diagram)
 end note
 
-Redis --> InstC : Receive(channel: conversation:{conv_id}, event: new_message{...})
-deactivate Redis
+ElastiCache --> InstC : Receive(channel: conversation:{conv_id}, event: new_message{...})
+deactivate ElastiCache
 activate InstC
 InstC -> InstC : Check local connections for User B in {conv_id}
 InstC -> UserB : WebSocket Send (new_message{...})

@@ -6,7 +6,7 @@ This document provides an overview of the WebSocket high availability implementa
 
 ### 1. WebSocket Manager (`app/ws/websocket_manager.py`)
 - Enhanced to support cross-instance awareness
-- Uses Redis for connection tracking and PubSub
+- Uses AWS ElastiCache for connection tracking and PubSub
 - Handles message broadcasting across instances
 - Manages user status and activity tracking
 
@@ -22,13 +22,13 @@ This document provides an overview of the WebSocket high availability implementa
 - Handles read receipts and typing notifications
 - Adds connection information and health monitoring
 
-### 4. Redis Connection (`app/redis/connection.py`)
-- Provides a connection pool for Redis operations
+### 4. ElastiCache Connection (`app/redis/connection.py`)
+- Provides a connection pool for AWS ElastiCache operations
 - Configurable via environment variables
 - Handles connection errors gracefully
 
-### 5. Redis PubSub (`app/redis/pubsub.py`)
-- Implements the Redis PubSub listener
+### 5. ElastiCache PubSub (`app/redis/pubsub.py`)
+- Implements the AWS ElastiCache PubSub listener
 - Handles cross-instance message distribution
 - Provides fault tolerance with retries
 - Maps events to appropriate handlers
@@ -54,15 +54,15 @@ All errors include detailed error messages and appropriate status codes.
 
 ### 1. Connection Management
 - Each connection has a unique ID
-- Connection data is stored in Redis with metadata
+- Connection data is stored in AWS ElastiCache with metadata
 - Connections are tracked across instances
 - Grace period handling for reconnections
 
 ### 2. Message Delivery
-- Messages are published to Redis channels
+- Messages are published to AWS ElastiCache channels
 - Each instance has a PubSub listener
 - Local connections receive messages directly 
-- Remote connections receive via Redis PubSub
+- Remote connections receive via AWS ElastiCache PubSub
 
 ### 3. Status Tracking
 - User status is stored in Firestore
@@ -78,7 +78,7 @@ All errors include detailed error messages and appropriate status codes.
 
 ### 5. Health Monitoring
 - Health check endpoint for load balancers
-- Service-level health reporting (Redis, Firestore)
+- Service-level health reporting (AWS ElastiCache, Firestore)
 - Connection statistics for monitoring
 - Degraded mode operation when components fail
 
@@ -88,18 +88,18 @@ The implementation is designed for testability:
 
 1. **Unit Testing**:
    - Each component can be tested in isolation
-   - Redis and Firestore operations can be mocked
+   - AWS ElastiCache and Firestore operations can be mocked
    - WebSocket functionality can be tested with mock clients
 
 2. **Integration Testing**:
    - Multi-instance setup can be tested locally with Docker
-   - Redis PubSub can be verified with test channels
+   - AWS ElastiCache PubSub can be verified with test channels
    - Connection tracking can be tested with simulated connections
 
 3. **Load Testing**:
    - Connection handling under load should be tested
    - Message delivery latency should be measured
-   - Redis performance should be monitored
+   - AWS ElastiCache performance should be monitored
 
 ## Deployment Notes
 
@@ -107,8 +107,8 @@ The implementation is designed for testability:
    - Each instance needs a unique ID (via environment variable)
    - In AWS, this can be the EC2 instance ID or container ID
 
-2. **Redis Configuration**:
-   - Redis needs to be accessible from all API instances
+2. **AWS ElastiCache Configuration**:
+   - AWS ElastiCache needs to be accessible from all API instances
    - For AWS, ElastiCache in cluster mode is recommended
    - Enable automatic failover for high availability
 
@@ -121,9 +121,9 @@ The implementation is designed for testability:
 
 ```
 INSTANCE_ID=unique-instance-id  # Required for instance identification
-REDIS_HOST=localhost  # Redis host (default: localhost)
-REDIS_PORT=6379       # Redis port (default: 6379)
-REDIS_PASSWORD=       # Redis password (if required)
-REDIS_SSL=false       # Whether to use SSL for Redis (default: false)
-REDIS_DB=0            # Redis database index (default: 0)
+REDIS_HOST=localhost  # AWS ElastiCache host (default: localhost)
+REDIS_PORT=6379       # AWS ElastiCache port (default: 6379)
+REDIS_PASSWORD=       # AWS ElastiCache password (if required)
+REDIS_SSL=false       # Whether to use SSL for AWS ElastiCache (default: false)
+REDIS_DB=0            # AWS ElastiCache database index (default: 0)
 ```
