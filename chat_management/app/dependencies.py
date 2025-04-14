@@ -24,28 +24,25 @@ class AuthenticatedUser(BaseModel):
     phoneNumber: str
     isDiasbled: bool = False 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    if Environment.is_dev_environment():
-        return AuthenticatedUser(phoneNumber=credentials['phoneNumber'])
-    
+async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
         
     if Environment.is_dev_environment():
         logger.info(f"Token: {token}")
         if not isVietnamesePhoneNumber(token):
             raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
-        return
+        return AuthenticatedUser(phoneNumber=token, isDiasbled=False)
     
     try:
         return auth.verify_id_token(token, check_revoked=True)
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid token format")
-    except auth.InvalidIdTokenError:
-        raise HTTPException(status_code=401, detail="Invalid ID token")
     except auth.ExpiredIdTokenError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except auth.RevokedIdTokenError:
         raise HTTPException(status_code=401, detail="Token has been revoked")
+    except auth.InvalidIdTokenError:
+        raise HTTPException(status_code=401, detail="Invalid ID token")
     except auth.CertificateFetchError:
         raise HTTPException(status_code=500, detail="Error fetching certificates")
     except auth.UserDisabledError:
@@ -55,8 +52,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=500, detail="Authentication error")
     
 async def get_current_active_user(
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    decoded_token: Annotated[AuthenticatedUser, Depends(decode_token)],
 ):
-    if current_user.isDiasbled:
+    if decoded_token.isDiasbled:
         raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user   
+    return decoded_token

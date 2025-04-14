@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from firebase_admin import firestore
 
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
-from ..dependencies import get_current_user, AuthenticatedUser, get_current_active_user
+from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
 from .schemas import Message, MessageType
 from ..notifications.service import NotificationService
@@ -21,14 +21,15 @@ logger = logging.getLogger(__name__)
 
 # Create the main router for conversations
 router = APIRouter(
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(decode_token)],
 )
 
 notification_service = NotificationService()
 connection_manager = get_connection_manager()
+tags = ["Messages"]
 
 
-@router.get('/{conversation_id}/messages', response_model=PaginatedResponse[Message])
+@router.get('/{conversation_id}/messages', response_model=PaginatedResponse[Message], tags=tags)
 async def get_conversation_messages(
         conversation_id: str,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
@@ -252,7 +253,7 @@ async def send_conversation_message(
     }
 
 
-@router.post('/{conversation_id}/messages/{message_id}/read')
+@router.post('/{conversation_id}/messages/{message_id}/read', tags=tags)
 async def mark_message_as_read(
         conversation_id: str,
         message_id: str,

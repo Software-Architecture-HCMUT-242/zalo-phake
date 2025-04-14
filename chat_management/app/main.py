@@ -2,13 +2,13 @@ import logging
 import os
 
 from app.config import get_prefix
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from .conversations import all_router as conversations_routers
 from .notifications.router import router as notifications_router
 from .ws.router import router as ws_router
-from app.dependencies import token_required
+from app.dependencies import decode_token
 
 # import all you need from fastapi-pagination
 
@@ -51,9 +51,9 @@ async def health_check():
     """
     return {"status": "healthy", "version": "1.0.0"}
 
-@app.get("/whoami",)
-async def whoami():
-    pass
+@app.get("/whoami", tags=["Dev test"])
+async def whoami(current_user: dict = Depends(decode_token)):
+    return current_user
 
 
 # app.include_router(chats_router)

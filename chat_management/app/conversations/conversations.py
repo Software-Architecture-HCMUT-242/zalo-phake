@@ -17,18 +17,18 @@ from ..firebase import firestore_db
 from ..pagination import common_pagination_parameters, PaginationParams, PaginatedResponse
 from ..time_utils import convert_timestamps
 
-from ..dependencies import get_current_user
+from ..dependencies import decode_token
 
 
 logger = logging.getLogger(__name__)
 
 # Create the main router for conversations
 router = APIRouter(
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(decode_token)],
 )
+tags = ["Conversations"]
 
-
-@router.get('/conversations', response_model=PaginatedResponse[Conversation])
+@router.get('/conversations', response_model=PaginatedResponse[Conversation], tags=tags)
 async def get_conversations(
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
         pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)],
@@ -145,7 +145,7 @@ async def get_conversations(
         raise HTTPException(status_code=500, detail="Failed to retrieve conversations")
 
 
-@router.post('/conversations', response_model=ConversationResponse)
+@router.post('/conversations', response_model=ConversationResponse, tags=tags)
 async def create_conversation(
         body: ConversationCreate,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
@@ -328,7 +328,7 @@ async def create_conversation(
     )
 
 
-@router.get('/conversations/{conversation_id}', response_model=ConversationDetail)
+@router.get('/conversations/{conversation_id}', response_model=ConversationDetail, tags=tags)
 async def get_conversation(
     conversation_id: str,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
@@ -433,7 +433,7 @@ async def get_conversation(
         raise HTTPException(status_code=500, detail="Failed to retrieve conversation details")
 
 
-@router.put('/conversations/{conversation_id}', response_model=ConversationDetail)
+@router.put('/conversations/{conversation_id}', response_model=ConversationDetail, tags=tags)
 async def update_conversation_metadata(
     conversation_id: str,
     body: ConversationMetadataUpdate,
