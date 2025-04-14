@@ -103,18 +103,31 @@ async def register(request: Request):
 
 @app.post("/auth/login", status_code=200)
 async def login(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
-    log(f'[Debug] token: {vToken}')
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = FirebaseDB.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    vRequest = await request.json()
+    vData = deepcopy(vRequest)
+    vError = {}
+    # [1]: Validate request body
+    if not validate(vData, "phone_number", str, int, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "password", str, str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    log(f"[Debug]: Converted data:\n {vData}")
+
+    # [2]: Check if user exist in Authen
+    user = FirebaseDB.query_user_by_phone_number(vRequest["phone_number"])
+    if not user:
+        log(f'[Error] Phone number not found')
+        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+
+    # [3]: Check if user has password
+    if not hasattr(user, 'password'):
+        log(f'[Error] This user\'s password not found in Auth')
+        raise HTTPException(status_code=404, detail="[Error]: This user\'s password not found in Auth")
+
+    # [4]: Check if password matches user
+    if not user.password == vRequest["password"]:
+        log(f'[Error] Password not matched: \"{user.password}\" | \"{vRequest["password"]}\"')
+        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
     # BE doesn't need to send token back, only need to verify FE token
     # FE refresh token is received directly from Firebase, invalid after logout
