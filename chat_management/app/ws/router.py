@@ -8,7 +8,8 @@ from app.service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore
 
-from .websocket_manager import ConnectionManager
+from .websocket_manager import get_connection_manager
+from ..aws.elasticache import chat_management_client
 from ..dependencies import decode_token
 from ..firebase import firestore_db
 
@@ -19,7 +20,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Global connection manager (initialized in the module)
-connection_manager = ConnectionManager()
+connection_manager = get_connection_manager()
+
+
+async def is_conversation_participant(conversation_id: str, user_id: str) -> bool:
+    """
+    Check if a user is a participant in a conversation
+    
+    Args:
+        conversation_id: The ID of the conversation to check
+        user_id: The ID of the user to check
+        
+    Returns:
+        bool: True if the user is a participant, False otherwise
+    """
+    try:
+        # Get the conversation from Firestore
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+        conversation = await asyncio.to_thread(conversation_ref.get)
+        
+        if not conversation.exists:
+            return False
+            
+        conversation_data = conversation.to_dict()
+        return user_id in conversation_data.get('participants', [])
+        
+    except Exception as e:
+        logger.error(f"Error checking conversation participation: {str(e)}")
+        return False
+
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -116,10 +145,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     # Ensure connection is removed on any error
     connection_manager.disconnect(user_id, connection_id)
 
-# Export the connection manager so it can be used by other modules
-def get_connection_manager():
-  return connection_manager
-
 
 # HTTP endpoints for WebSocket-related operations
 @router.post("/user/status", status_code=status.HTTP_200_OK)
@@ -213,13 +238,18 @@ async def get_connection_info(current_user = Depends(decode_token)):
   user_id = current_user.phoneNumber
   
   try:
-    # Get connection counts
+    # Get connection counts from local instance
     user_connection_count = connection_manager.get_user_connection_count(user_id)
     total_users = connection_manager.get_connected_users_count()
+    
+    # Get connections from chat_management service
+    remote_connections = await chat_management_client.get_user_connections(user_id)
+    total_connections = len(remote_connections)
     
     return {
       "user_id": user_id,
       "active_connections": user_connection_count,
+      "total_connections": total_connections,  # Across all instances
       "is_connected": connection_manager.is_user_connected(user_id),
       "total_connected_users": total_users
     }

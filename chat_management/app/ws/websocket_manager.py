@@ -1,12 +1,16 @@
 import asyncio
 import json
 import logging
+import os
+import socket
+import time
 import uuid
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Any, List
 
 from fastapi import WebSocket
 from firebase_admin import firestore
 
+from ..aws.elasticache import chat_management_client
 from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)
@@ -15,6 +19,7 @@ class ConnectionManager:
   def __init__(self):
     self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
     self.user_conversations: Dict[str, Set[str]] = {}  # Maps user IDs to their conversation IDs
+    self.instance_id = os.environ.get("INSTANCE_ID", socket.gethostname())
 
   async def connect(self, websocket: WebSocket, user_id: str):
     """
@@ -30,6 +35,16 @@ class ConnectionManager:
     # Generate a connection ID for this specific connection
     connection_id = str(uuid.uuid4())
     self.active_connections[user_id][connection_id] = websocket
+
+    # Track connection in chat_management service
+    await chat_management_client.track_user_connection(
+      user_id=user_id,
+      connection_id=connection_id,
+      metadata={
+        'instance_id': self.instance_id,
+        'connected_at': time.time()
+      }
+    )
 
     # Update user status to online in Firestore
     try:
@@ -51,6 +66,12 @@ class ConnectionManager:
     if user_id in self.active_connections and connection_id in self.active_connections[user_id]:
       del self.active_connections[user_id][connection_id]
       logger.info(f"User {user_id} disconnected connection ID {connection_id}")
+
+      # Remove connection tracking in chat_management service
+      asyncio.create_task(chat_management_client.remove_user_connection(
+        user_id=user_id,
+        connection_id=connection_id
+      ))
 
       # If this was the last connection for this user, clean up
       if not self.active_connections[user_id]:
@@ -127,6 +148,12 @@ class ConnectionManager:
           # Add conversation to user's conversation set
           if participant in self.user_conversations:
             self.user_conversations[participant].add(conversation_id)
+            
+          # Track user's conversation in chat_management service
+          asyncio.create_task(chat_management_client.add_user_to_conversation(
+            user_id=participant,
+            conversation_id=conversation_id
+          ))
 
           # Send to all connections for this user
           for connection_id, websocket in self.active_connections[participant].items():
@@ -139,6 +166,10 @@ class ConnectionManager:
       # Clean up any disconnected websockets
       for user_id, connection_id in disconnected:
         self.disconnect(user_id, connection_id)
+        
+      # Publish the message to chat_management service for cross-instance distribution
+      channel = f"conversation:{conversation_id}"
+      await chat_management_client.publish(channel, message)
 
     except Exception as e:
       logger.error(f"Error in broadcast_to_conversation: {str(e)}")
@@ -286,13 +317,10 @@ class ConnectionManager:
         # Get all conversations this user participates in
         conversations = await self.get_user_conversations(user_id)
         
-        # Get Redis connection for publishing
-        redis_conn = await get_redis_connection()
-        
         # Broadcast status change to all conversations
         for conversation_id in conversations:
           channel = f"conversation:{conversation_id}"
-          await redis_conn.publish(channel, json.dumps(status_event))
+          await chat_management_client.publish(channel, status_event)
           
         logger.info(f"Broadcast status change for user {user_id} to {len(conversations)} conversations")
           
@@ -303,7 +331,7 @@ class ConnectionManager:
     """
     Broadcast a user's status change to relevant local connections
     
-    This is a helper method used when receiving status change events from Redis.
+    This is a helper method used when receiving status change events from chat_management service.
     It delivers the event to local connections that need to know about this user.
     
     Args:
@@ -359,6 +387,51 @@ class ConnectionManager:
     except Exception as e:
       logger.error(f"Error broadcasting user status: {str(e)}")
   
+  async def get_user_conversations(self, user_id: str) -> List[str]:
+    """
+    Get all conversations a user is part of
+    
+    Args:
+        user_id: The user ID
+        
+    Returns:
+        List[str]: List of conversation IDs the user is part of
+    """
+    try:
+      # First try to get from local cache
+      if user_id in self.user_conversations and self.user_conversations[user_id]:
+        return list(self.user_conversations[user_id])
+      
+      # If not in local cache, get from chat_management service
+      conversations = await chat_management_client.get_user_conversations(user_id)
+      
+      # If still empty, query Firestore directly
+      if not conversations:
+        # Get conversations from Firestore
+        conversations_ref = firestore_db.collection('conversations')
+        query = conversations_ref.where('participants', 'array_contains', user_id)
+        conversations_docs = await asyncio.to_thread(query.get)
+        
+        conversations = [doc.id for doc in conversations_docs]
+        
+        # Cache conversation IDs for this user
+        if user_id not in self.user_conversations:
+          self.user_conversations[user_id] = set()
+        
+        for conversation_id in conversations:
+          self.user_conversations[user_id].add(conversation_id)
+          
+          # Also add to chat_management service
+          asyncio.create_task(chat_management_client.add_user_to_conversation(
+            user_id=user_id, 
+            conversation_id=conversation_id
+          ))
+      
+      return conversations
+    except Exception as e:
+      logger.error(f"Error getting user conversations: {str(e)}")
+      return []
+  
   async def get_connection_stats(self) -> Dict[str, Any]:
     """
     Get statistics about current WebSocket connections
@@ -371,25 +444,15 @@ class ConnectionManager:
       local_users = len(self.active_connections)
       local_connections = self.get_total_connections_count()
       
-      # Get global connection counts from Redis
-      redis_conn = await get_redis_connection()
-      
-      # Get all user keys
-      all_user_keys = await redis_conn.keys("connections:*")
-      global_users = len(all_user_keys)
-      
-      # Count all connections across instances
-      global_connections = 0
-      for user_key in all_user_keys:
-        connections = await redis_conn.hlen(user_key)
-        global_connections += connections
+      # Get global connection counts from chat_management service
+      stats = await chat_management_client.get_connection_stats()
       
       return {
         "instance_id": self.instance_id,
         "local_users": local_users,
         "local_connections": local_connections,
-        "global_users": global_users,
-        "global_connections": global_connections,
+        "global_users": stats.get("unique_users", 0),
+        "global_connections": stats.get("total_connections", 0),
         "timestamp": time.time()
       }
     except Exception as e:
@@ -401,3 +464,10 @@ class ConnectionManager:
         "local_connections": self.get_total_connections_count(),
         "timestamp": time.time()
       }
+
+# Singleton instance
+connection_manager = ConnectionManager()
+
+def get_connection_manager():
+  """Get the connection manager singleton instance"""
+  return connection_manager

@@ -5,10 +5,9 @@ from app.phone_utils import isVietnamesePhoneNumber
 from app.service_env import Environment
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
 from firebase_admin import auth
+from pydantic import BaseModel
 
-from .config import settings
 from .phone_utils import convert_to_vietnamese_phone_number
 
 logging.basicConfig(

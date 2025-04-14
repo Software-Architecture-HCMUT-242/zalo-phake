@@ -1,0 +1,209 @@
+import asyncio
+import json
+import logging
+import os
+import socket
+from typing import Dict, Any
+
+from .client import chat_management_client
+from ...ws.websocket_manager import get_connection_manager
+
+logger = logging.getLogger(__name__)
+
+async def handle_new_message(data: Dict[str, Any], connection_manager):
+    """
+    Process new message events from chat_management service
+    
+    Args:
+        data: Message data containing conversationId, message details
+        connection_manager: WebSocket connection manager instance
+    """
+    try:
+        conversation_id = data.get('conversationId')
+        sender_id = data.get('senderId')
+        
+        if not conversation_id or not sender_id:
+            logger.error(f"Missing required fields in new_message event: {data}")
+            return
+            
+        # Forward message to all local connections for this conversation
+        await connection_manager.broadcast_to_conversation(data, conversation_id, skip_user_id=sender_id)
+        logger.debug(f"Forwarded new message in conversation {conversation_id} from user {sender_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling new message event: {str(e)}")
+
+async def handle_typing(data: Dict[str, Any], connection_manager):
+    """
+    Process typing indicator events from chat_management service
+    
+    Args:
+        data: Typing data containing conversationId and userId
+        connection_manager: WebSocket connection manager instance
+    """
+    try:
+        conversation_id = data.get('conversationId')
+        user_id = data.get('userId')
+        
+        if not conversation_id or not user_id:
+            logger.error(f"Missing required fields in typing event: {data}")
+            return
+            
+        # Forward typing indicator to all local connections for this conversation
+        await connection_manager.broadcast_to_conversation(data, conversation_id, skip_user_id=user_id)
+        logger.debug(f"Forwarded typing indicator in conversation {conversation_id} from user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling typing event: {str(e)}")
+
+async def handle_read_receipt(data: Dict[str, Any], connection_manager):
+    """
+    Process read receipt events from chat_management service
+    
+    Args:
+        data: Read receipt data containing conversationId, messageId and userId
+        connection_manager: WebSocket connection manager instance
+    """
+    try:
+        conversation_id = data.get('conversationId')
+        message_id = data.get('messageId')
+        user_id = data.get('userId')
+        
+        if not conversation_id or not message_id or not user_id:
+            logger.error(f"Missing required fields in message_read event: {data}")
+            return
+            
+        # Forward read receipt to all local connections for this conversation
+        await connection_manager.broadcast_to_conversation(data, conversation_id, skip_user_id=user_id)
+        logger.debug(f"Forwarded read receipt in conversation {conversation_id} for message {message_id} from user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling read receipt event: {str(e)}")
+
+async def handle_status_change(data: Dict[str, Any], connection_manager):
+    """
+    Process user status change events from chat_management service
+    
+    Args:
+        data: Status data containing userId and status
+        connection_manager: WebSocket connection manager instance
+    """
+    try:
+        user_id = data.get('userId')
+        status = data.get('status')
+        
+        if not user_id or not status:
+            logger.error(f"Missing required fields in user_status_change event: {data}")
+            return
+            
+        # Forward status change to relevant conversations
+        if 'conversationId' in data:
+            # If conversation ID is provided, broadcast to that conversation
+            await connection_manager.broadcast_to_conversation(data, data['conversationId'], skip_user_id=user_id)
+        else:
+            # Otherwise, send to all relevant users (handled by ws manager)
+            await connection_manager.broadcast_user_status(user_id, status)
+            
+        logger.debug(f"Forwarded status change for user {user_id} to status {status}")
+        
+    except Exception as e:
+        logger.error(f"Error handling status change event: {str(e)}")
+
+async def _handle_message(message: Dict[str, Any], connection_manager):
+    """
+    Process a message from the chat_management service based on its event type
+    
+    Args:
+        message: The message to process
+        connection_manager: WebSocket connection manager instance
+    """
+    try:
+        # Extract data from the message
+        data = json.loads(message.get('message', '{}'))
+        
+        # Extract event type and call the appropriate handler
+        event_type = data.get('event')
+        
+        event_handlers = {
+            'new_message': handle_new_message,
+            'typing': handle_typing,
+            'message_read': handle_read_receipt,
+            'user_status_change': handle_status_change
+        }
+        
+        if event_type in event_handlers:
+            await event_handlers[event_type](data, connection_manager)
+        else:
+            logger.warning(f"Unknown event type: {event_type}")
+            
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON in message: {message.get('message')}")
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+
+async def start_pubsub_listener():
+    """
+    Start the chat_management service PubSub listener for inter-instance communication
+    
+    This function runs as a background task and continuously polls for
+    messages published to channels that this instance is subscribed to.
+    """
+    instance_id = os.environ.get("INSTANCE_ID", socket.gethostname())
+    connection_manager = get_connection_manager()
+    
+    # Reconnection parameters
+    max_retries = 5
+    retry_delay = 5  # seconds
+    current_retry = 0
+    poll_interval = 1  # seconds
+    
+    while True:
+        try:
+            # Check if client is connected
+            if not chat_management_client.is_connected():
+                raise Exception("chat_management service not connected")
+            
+            # Get list of channels this instance is subscribed to
+            instance_channels_key = f"subscriptions:{instance_id}"
+            
+            # Poll for new messages (in a real implementation, this would use a more efficient streaming approach)
+            # For demonstration purposes, we're using a simple polling approach
+            
+            # Get messages from chat_management service
+            # This implementation simulates polling the service
+            # In a production environment, this would use a direct subscription API
+            table = chat_management_client.chat_management.Table('chat_messages')
+            response = table.scan(
+                FilterExpression=None,  # In production, filter by timestamp and channel
+                Limit=20
+            )
+            
+            # Process each message
+            for message in response.get('Items', []):
+                # Check if this instance is subscribed to this channel
+                channel = message.get('channel')
+                
+                # Process the message if applicable
+                await _handle_message(message, connection_manager)
+            
+            # Reset retry counter on successful connection
+            current_retry = 0
+            
+            # Sleep before polling again
+            await asyncio.sleep(poll_interval)
+            
+        except Exception as e:
+            logger.error(f"PubSub listener error: {str(e)}")
+            
+            # Implement retry logic
+            current_retry += 1
+            if current_retry <= max_retries:
+                retry_wait = retry_delay * current_retry
+                logger.info(f"Retrying PubSub connection in {retry_wait} seconds (attempt {current_retry}/{max_retries})")
+                await asyncio.sleep(retry_wait)
+            else:
+                logger.critical(f"Failed to connect to chat_management service after {max_retries} attempts. PubSub listener stopped.")
+                # In production, you might want to implement a circuit breaker pattern here
+                # For now, we'll just reset and try again after a longer delay
+                current_retry = 0
+                await asyncio.sleep(60)  # Wait a minute before trying again

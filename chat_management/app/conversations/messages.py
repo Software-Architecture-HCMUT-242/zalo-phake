@@ -5,16 +5,16 @@ import os
 import socket
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from firebase_admin import firestore
 
+from .schemas import Message, MessageType, MessageCreate
+from ..aws.elasticache import chat_management_client
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
-from ..redis.connection import get_redis_connection
-from .schemas import Message, MessageType, MessageCreate
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
@@ -236,11 +236,8 @@ async def send_conversation_message(
         logger.error(f"Error updating conversation metadata: {str(e)}")
         # Continue processing even if metadata update fails
     
-    # Step 3: Publish to Redis Pub/Sub for real-time notifications
+    # Step 3: Publish to chat_management service for real-time notifications
     try:
-        # Get Redis connection
-        redis_conn = await get_redis_connection()
-        
         # Create message event data for publishing
         message_event = {
             'event': 'new_message',
@@ -254,22 +251,22 @@ async def send_conversation_message(
             'participants': conversation_data.get('participants', [])
         }
         
-        # Publish to Redis channel for this conversation
+        # Publish to chat_management service channel for this conversation
         channel = f"conversation:{conversation_id}"
-        pub_result = await redis_conn.publish(channel, json.dumps(message_event))
+        pub_result = await chat_management_client.publish(channel, message_event)
         
         if pub_result:
-            logger.info(f"Message event published to Redis channel {channel} with {pub_result} receivers")
+            logger.info(f"Message event published to channel {channel}")
         else:
-            logger.warning(f"Published to Redis channel {channel} but found no subscribers")
-            # This is not an error - just means no online users are listening on the given channel
-            # We'll still process offline notifications below
+            logger.warning(f"Failed to publish to channel {channel}")
+            # This is not an error - just means the service might be temporarily unavailable
+            # We'll still process offline notifications below and try the direct WebSocket broadcast
     except Exception as e:
-        logger.error(f"Error with Redis Pub/Sub: {str(e)}")
-        # Fallback to direct WebSocket broadcast if Redis is not available
+        logger.error(f"Error publishing to chat_management service: {str(e)}")
+        # Fallback to direct WebSocket broadcast
         try:
             await broadcast_message(conversation_id, message_id, current_user.phoneNumber, content, message_type)
-            logger.info(f"Used direct WebSocket broadcast as Redis fallback for message {message_id}")
+            logger.info(f"Used direct WebSocket broadcast as fallback for message {message_id}")
         except Exception as ws_error:
             logger.error(f"Error broadcasting message via WebSocket fallback: {str(ws_error)}")
             # Don't fail the API request if WebSocket delivery fails - we'll still process offline notifications
@@ -399,11 +396,8 @@ async def mark_message_as_read(
             detail="Failed to update read status"
         )
 
-    # Notify other participants via Redis PubSub that message has been read
+    # Notify other participants via chat_management service that message has been read
     try:
-        # Get Redis connection
-        redis_conn = await get_redis_connection()
-        
         # Create read receipt event
         read_event = {
             'event': 'message_read',
@@ -413,17 +407,17 @@ async def mark_message_as_read(
             'instanceId': os.environ.get("INSTANCE_ID", socket.gethostname())
         }
         
-        # Publish to Redis channel
+        # Publish to chat_management service channel
         channel = f"conversation:{conversation_id}"
-        pub_result = await redis_conn.publish(channel, json.dumps(read_event))
+        pub_result = await chat_management_client.publish(channel, read_event)
         
         if pub_result:
-            logger.info(f"Read receipt published to Redis channel {channel} with {pub_result} receivers")
+            logger.info(f"Read receipt published to channel {channel}")
         else:
-            logger.info(f"Published read receipt to Redis channel {channel} but found no subscribers")
+            logger.info(f"Published read receipt to channel {channel} but service might be temporarily unavailable")
     except Exception as e:
-        logger.error(f"Error publishing read receipt to Redis: {str(e)}")
-        # Fallback to direct WebSocket broadcast if Redis is not available
+        logger.error(f"Error publishing read receipt: {str(e)}")
+        # Fallback to direct WebSocket broadcast
         try:
             read_event = {
                 'event': 'message_read',
@@ -432,7 +426,7 @@ async def mark_message_as_read(
                 'userId': user_id
             }
             await connection_manager.broadcast_to_conversation(read_event, conversation_id, skip_user_id=user_id)
-            logger.info(f"Used direct WebSocket broadcast as Redis fallback for read receipt")
+            logger.info(f"Used direct WebSocket broadcast as fallback for read receipt")
         except Exception as ws_error:
             logger.error(f"Error broadcasting read receipt via WebSocket: {str(ws_error)}")
             # Don't fail the request if WebSocket notification fails
@@ -490,11 +484,8 @@ async def send_typing_notification(
             detail="Failed to access conversation data"
         )
     
-    # Send typing notification via Redis PubSub
+    # Send typing notification via chat_management service
     try:
-        # Get Redis connection
-        redis_conn = await get_redis_connection()
-        
         # Create typing event
         typing_event = {
             'event': 'typing',
@@ -503,27 +494,24 @@ async def send_typing_notification(
             'instanceId': os.environ.get("INSTANCE_ID", socket.gethostname())
         }
         
-        # Publish to Redis channel
+        # Publish to chat_management service channel
         channel = f"conversation:{conversation_id}"
-        pub_result = await redis_conn.publish(channel, json.dumps(typing_event))
+        pub_result = await chat_management_client.publish(channel, typing_event)
         
         if pub_result:
-            logger.debug(f"Typing notification published to Redis channel {channel} with {pub_result} receivers")
+            logger.debug(f"Typing notification published to channel {channel}")
         else:
-            logger.debug(f"Published typing notification to Redis channel {channel} but found no subscribers")
+            logger.debug(f"Published typing notification to channel {channel} but service might be temporarily unavailable")
         
         return {'status': 'success'}
     except Exception as e:
-        logger.error(f"Error publishing typing notification to Redis: {str(e)}")
+        logger.error(f"Error publishing typing notification: {str(e)}")
         
-        # Fallback to direct WebSocket broadcast if Redis is not available
+        # Fallback to direct WebSocket broadcast
         try:
-            # Get the connection manager
-            connection_manager = get_connection_manager()
-            
             # Send typing notification via WebSocket
             await connection_manager.handle_typing_notification(conversation_id, user_id)
-            logger.info(f"Used direct WebSocket broadcast as Redis fallback for typing notification")
+            logger.info(f"Used direct WebSocket broadcast as fallback for typing notification")
             
             return {'status': 'success'}
         except Exception as ws_error:
@@ -537,7 +525,7 @@ async def send_typing_notification(
 async def broadcast_message(conversation_id: str, message_id: str, sender_id: str, content: str, message_type: str):
     """
     Broadcast a message to all participants in a conversation using WebSocket
-    This is a fallback method used when Redis PubSub is not available
+    This is a fallback method used when chat_management service is not available
     
     Args:
         conversation_id: The ID of the conversation
@@ -581,9 +569,8 @@ async def process_offline_notifications(conversation_id: str, message_id: str, s
     notification_sent = False
     
     try:
-        # First check Redis to see which users have active connections
+        # First check chat_management service to see which users have active connections
         try:
-            redis_conn = await get_redis_connection()
             online_users = []
             
             # Check each participant to see if they have active connections
@@ -591,9 +578,9 @@ async def process_offline_notifications(conversation_id: str, message_id: str, s
                 if participant == sender_id:
                     continue  # Skip sender, they don't need a notification
                     
-                # Check if user has any active connections in Redis
-                conn_count = await redis_conn.hlen(f"connections:{participant}")
-                if conn_count > 0:
+                # Check if user has any active connections in chat_management service
+                connections = await chat_management_client.get_user_connections(participant)
+                if connections:
                     online_users.append(participant)
             
             # Remove online users from notification list
@@ -608,8 +595,8 @@ async def process_offline_notifications(conversation_id: str, message_id: str, s
             # Update participants list to only include offline users
             participants = offline_participants
         except Exception as e:
-            logger.error(f"Error checking online status in Redis: {str(e)}")
-            # Continue with all participants if we can't check Redis
+            logger.error(f"Error checking online status in chat_management service: {str(e)}")
+            # Continue with all participants if we can't check online status
             # We'll remove the sender at least
             participants = [p for p in participants if p != sender_id]
             

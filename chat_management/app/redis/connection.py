@@ -1,7 +1,8 @@
-import redis.asyncio as redis
-import os
 import logging
+import os
 from functools import lru_cache
+
+import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
 

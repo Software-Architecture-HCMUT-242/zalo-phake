@@ -4,16 +4,14 @@ import logging
 import os
 import socket
 import time
-from typing import Dict, Any, Optional, List
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
-from firebase_admin import firestore
 
+from .router import get_connection_manager, is_conversation_participant
+from ..aws.elasticache import chat_management_client
 from ..dependencies import get_current_active_user
 from ..firebase import firestore_db
-from ..redis.connection import get_redis_connection
-from .router import get_connection_manager, is_conversation_participant
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +97,7 @@ async def mark_message_read(read_data: MessageRead, current_user = Depends(get_c
     user_id = current_user.phoneNumber
     conversation_id = read_data.conversation_id
     message_id = read_data.message_id
-    
+
     # Verify user is a participant in the conversation
     if not await is_conversation_participant(conversation_id, user_id):
         raise HTTPException(
@@ -191,21 +189,23 @@ async def get_connection_info(current_user = Depends(get_current_active_user)):
     user_id = current_user.phoneNumber
     
     try:
-        # Get connection counts from Redis
-        redis_conn = await get_redis_connection()
-        all_connections = await redis_conn.hgetall(f"connections:{user_id}")
+        # Get connection data from chat_management service
+        all_connections = await chat_management_client.get_user_connections(user_id)
         
         # Parse connection data
         connections_by_instance = {}
-        for conn_id, conn_data in all_connections.items():
-            conn_info = json.loads(conn_data)
-            instance_id = conn_info.get('instance_id')
+        for conn_info in all_connections:
+            instance_id = conn_info.get('instance_id', 'unknown')
+            connection_id = conn_info.get('connection_id')
+            metadata = conn_info.get('metadata', {})
+            
             if instance_id not in connections_by_instance:
                 connections_by_instance[instance_id] = []
+                
             connections_by_instance[instance_id].append({
-                "connection_id": conn_id,
-                "created_at": conn_info.get('created_at'),
-                "ip_address": conn_info.get('ip_address')
+                "connection_id": connection_id,
+                "created_at": metadata.get('connected_at'),
+                "ip_address": metadata.get('ip_address', 'unknown')
             })
         
         # Get user status from Firestore
@@ -280,7 +280,7 @@ async def health_check():
     Health check endpoint for load balancers and monitoring
     
     Returns:
-        Health status information including Redis and Firestore connectivity
+        Health status information including chat_management service and Firestore connectivity
     
     Raises:
         HTTPException: If critical services are unavailable
@@ -295,17 +295,23 @@ async def health_check():
         "services": {}
     }
     
-    # Check Redis connectivity
+    # Check chat_management service connectivity
     try:
-        redis_conn = await get_redis_connection()
-        await redis_conn.ping()
-        health_status["services"]["redis"] = {
-            "status": "connected",
-            "message": "Redis connection successful"
-        }
+        is_connected = chat_management_client.is_connected()
+        if is_connected:
+            health_status["services"]["chat_management"] = {
+                "status": "connected",
+                "message": "Chat management service connection successful"
+            }
+        else:
+            health_status["services"]["chat_management"] = {
+                "status": "error",
+                "message": "Chat management service not connected"
+            }
+            health_status["status"] = "degraded"
     except Exception as e:
-        logger.error(f"Redis health check failed: {str(e)}")
-        health_status["services"]["redis"] = {
+        logger.error(f"Chat management service health check failed: {str(e)}")
+        health_status["services"]["chat_management"] = {
             "status": "error",
             "message": str(e)
         }

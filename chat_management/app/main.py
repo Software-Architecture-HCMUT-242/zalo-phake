@@ -1,17 +1,17 @@
+import asyncio
 import logging
 import os
-import asyncio
 
 from app.config import get_prefix
+from app.dependencies import decode_token
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
+from .aws.elasticache.pubsub import start_pubsub_listener  # Updated import to use chat_management service
 from .conversations import all_router as conversations_routers
 from .notifications.router import router as notifications_router
-from .ws.router import router as ws_router
 from .ws.api_endpoints import router as ws_api_router
-from .redis.pubsub import start_pubsub_listener
-from app.dependencies import decode_token
+from .ws.router import router as ws_router
 
 # import all you need from fastapi-pagination
 
@@ -74,9 +74,9 @@ async def startup_event():
     """
     Run on application startup to initialize background tasks and services
     """
-    # Start Redis PubSub listener for WebSocket message distribution across instances
+    # Start chat_management service PubSub listener for WebSocket message distribution across instances
     asyncio.create_task(start_pubsub_listener())
-    logger.info("Started Redis PubSub listener for WebSocket message distribution")
+    logger.info("Started chat_management service PubSub listener for WebSocket message distribution")
     
     # Initialize health check document in Firestore if it doesn't exist
     from .firebase import firestore_db

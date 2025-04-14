@@ -1,7 +1,8 @@
 import logging
+import os
+
 from .client import SQSClient
 from .config import settings
-import os
 
 logger = logging.getLogger(__name__)
 
