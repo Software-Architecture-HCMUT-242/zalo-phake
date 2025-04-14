@@ -95,9 +95,8 @@ class FirebaseDB():
         # Verify firebase token from FE
         try:
             decoded_token = auth.verify_id_token(id_token)
-            uid = decoded_token['uid']
-            return uid
+            return decoded_token
         except Exception as e:
-            log("Invalid token:", e)
+            log(f"Invalid token: {e}")
             return None
 
