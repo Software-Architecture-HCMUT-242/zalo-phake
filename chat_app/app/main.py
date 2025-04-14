@@ -57,7 +57,7 @@ def validate(body, key, type_origin, type_convert, error, required=False):
     return True
 
 
-@app.post("/api/auth/register", status_code=201)
+@app.post("/auth/register", status_code=201)
 async def register(request: Request):
     vHeader = request.headers.get("Authorization")
     if not vHeader:
@@ -101,7 +101,7 @@ async def register(request: Request):
     return {"success": True, "user": vResponse["body"], "retoken": True}
 
 
-@app.post("/api/auth/login", status_code=200)
+@app.post("/auth/login", status_code=200)
 async def login(request: Request):
     vHeader = request.headers.get("Authorization")
     if not vHeader:
@@ -121,7 +121,7 @@ async def login(request: Request):
     return {"success": True}
 
 
-@app.post("/api/auth/change-pass", status_code=200)
+@app.post("/auth/change-pass", status_code=200)
 async def change_pass(request: Request):
     vHeader = request.headers.get("Authorization")
     if not vHeader:
@@ -159,7 +159,7 @@ async def change_pass(request: Request):
     return {"success": True, "user": user, "retoken": True}
 
 
-@app.post("/api/auth/forgot-pass", status_code=200)
+@app.post("/auth/forgot-pass", status_code=200)
 async def forgot_pass(request: Request):
     vHeader = request.headers.get("Authorization")
     if not vHeader:
@@ -181,7 +181,7 @@ async def forgot_pass(request: Request):
     return {"success": True, "user": user, "retoken": True}
 
 
-@app.get("/api/auth/profile", status_code=200)
+@app.get("/auth/profile", status_code=200)
 async def profile(request: Request):
     vHeader = request.headers.get("Authorization")
     if not vHeader:
