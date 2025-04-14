@@ -13,8 +13,9 @@ from ..pagination import common_pagination_parameters, PaginatedResponse, Pagina
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+tags = ["Notifications"]
 
-@router.get('/notifications', response_model=PaginatedResponse[Notification])
+@router.get('/notifications', response_model=PaginatedResponse[Notification], tags=tags)
 async def get_notifications(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
     pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)],
@@ -57,7 +58,7 @@ async def get_notifications(
         size=pagination.size
     )
 
-@router.post('/notifications/{notification_id}/read')
+@router.post('/notifications/{notification_id}/read', tags=tags)
 async def mark_notification_as_read(
     notification_id: str,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
@@ -99,7 +100,7 @@ async def mark_notification_as_read(
 
     return {'status': 'success'}
 
-@router.post('/notifications/read-all')
+@router.post('/notifications/read-all', tags=tags)
 async def mark_all_notifications_as_read(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
 ):
@@ -126,7 +127,7 @@ async def mark_all_notifications_as_read(
 
     return {'status': 'success'}
 
-@router.get('/notification-preferences', response_model=NotificationPreference)
+@router.get('/notification-preferences', response_model=NotificationPreference, tags=tags)
 async def get_notification_preferences(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
 ):
@@ -153,7 +154,7 @@ async def get_notification_preferences(
 
     return NotificationPreference(**pref_data)
 
-@router.put('/notification-preferences', response_model=NotificationPreference)
+@router.put('/notification-preferences', response_model=NotificationPreference, tags=tags)
 async def update_notification_preferences(
     preferences: NotificationPreference,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
@@ -173,7 +174,7 @@ async def update_notification_preferences(
 
     return preferences
 
-@router.post('/device-tokens', response_model=DeviceToken)
+@router.post('/device-tokens', response_model=DeviceToken, tags=tags)
 async def register_device_token(
     device_token: DeviceToken,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
@@ -207,7 +208,7 @@ async def register_device_token(
 
     return device_token
 
-@router.delete('/device-tokens/{token}')
+@router.delete('/device-tokens/{token}', tags=tags)
 async def delete_device_token(
     token: str,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
