@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from firebase_admin import auth
 
 from .config import settings
+from .phone_utils import convert_to_vietnamese_phone_number
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +32,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         logger.info(f"Token: {token}")
         if not isVietnamesePhoneNumber(token):
             raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
-        return AuthenticatedUser(phoneNumber=token, isDiasbled=False)
+        return AuthenticatedUser(phoneNumber=convert_to_vietnamese_phone_number(token), isDiasbled=False)
     
     try:
         return auth.verify_id_token(token, check_revoked=True)
@@ -56,4 +57,7 @@ async def get_current_active_user(
 ):
     if decoded_token.isDiasbled:
         raise HTTPException(status_code=400, detail="Inactive user")
-    return decoded_token
+    return AuthenticatedUser(
+        phoneNumber=convert_to_vietnamese_phone_number(decoded_token["phoneNumber"]),
+        isDiasbled=decoded_token["isDisabled"]
+    )
