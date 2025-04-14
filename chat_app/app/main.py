@@ -16,8 +16,9 @@ log(f"Start HTTP server with prefix: {PREFIX}")
 app = FastAPI(root_path=PREFIX)
 
 origins = [
-    "http://localhost:5173",  # localhost of FE app
-    "https://zalophake.me"  # FE domain
+    # "http://localhost:5173",  # localhost of FE app
+    # "https://zalophake.me"  # FE domain,
+    "*"
 ]
 
 app.add_middleware(
