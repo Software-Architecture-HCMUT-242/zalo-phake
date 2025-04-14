@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from app.phone_utils import isVietnamesePhoneNumber
 from app.service_env import Environment
@@ -9,8 +9,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, De
 from firebase_admin import firestore
 
 from .websocket_manager import ConnectionManager
-from ..firebase import firestore_db
 from ..dependencies import decode_token
+from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)
 
