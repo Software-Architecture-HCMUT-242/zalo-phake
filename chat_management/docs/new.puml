@@ -1,0 +1,72 @@
+@startuml
+
+' --- Settings ---
+skinparam classAttributeIconSize 0
+hide empty members
+
+' --- Entities ---
+
+' User Entity: Represents application users
+class User {
+  + user_id : String <<PK>>  ' Unique identifier for the user
+  --
+  + phone_number : String <<unique>> ' User's phone number (used for login/registration)
+  + name : String ' Display name of the user
+  + profile_picture : String (URL) ' URL to the user's profile picture
+  + status : String ' User's current status message
+  + created_at : Timestamp ' Timestamp when the user account was created
+  + last_seen_at : Timestamp ' Timestamp when the user was last active
+}
+
+' Conversation Entity: Unified entity for both 1-on-1 and group chats
+class Conversation {
+  + conversation_id : String <<PK>> ' Unique identifier for the conversation
+  --
+  + name : String (nullable) ' Name of the conversation (primarily for groups)
+  + description : String (nullable) ' Description of the conversation (primarily for groups)
+  + group_picture : String (URL, nullable) ' URL to the group's picture (for groups)
+  + is_group : Boolean ' Flag indicating if it's a group chat (true) or 1-on-1 (false)
+  + created_at : Timestamp ' Timestamp when the conversation was created
+  + updated_at : Timestamp ' Timestamp when the conversation was last updated (e.g., new message, member change)
+}
+
+' Message Entity: Represents a single message within a conversation
+class Message {
+  + message_id : String <<PK>> ' Unique identifier for the message
+  --
+  + conversation_id : String <<FK>> ' Foreign key linking to the Conversation
+  + sender_id : String <<FK>> ' Foreign key linking to the User who sent the message
+  + content : String ' The actual content of the message (text, file URL, etc.)
+  + content_type : Enum {TEXT, IMAGE, DOCUMENT, VOICE} ' Type of message content
+  + sent_at : Timestamp ' Timestamp when the message was sent
+  + status : Enum {SENT, DELIVERED, READ} ' Delivery status of the message
+}
+
+' Participant Entity (Association Class): Links Users and Conversations (Many-to-Many)
+class Participant {
+ + user_id : String <<FK>> ' Foreign key linking to the User
+ + conversation_id : String <<FK>> ' Foreign key linking to the Conversation
+ --
+ + joined_at : Timestamp ' Timestamp when the user joined the conversation
+ + role : Enum {MEMBER, ADMIN} (nullable) ' User's role within the conversation (especially for groups)
+ + is_active : Boolean ' Indicates if the participant is currently active in the conversation (vs. left/removed)
+}
+
+' --- Relationships ---
+
+' User <-> Participant <-> Conversation (Many-to-Many)
+User "1" -- "0..*" Participant : participates in >
+Conversation "1" -- "1..*" Participant : has >
+' Explicit links back for clarity (optional in PlantUML but good practice)
+' Participant "0..*" -- "1" User
+' Participant "0..*" -- "1" Conversation
+
+' Conversation <-> Message (One-to-Many)
+Conversation "1" -- "0..*" Message : contains >
+' Message "0..*" -- "1" Conversation ' (Implied by the first relationship)
+
+' User <-> Message (One-to-Many, as Sender)
+User "1" -- "0..*" Message : sends >
+' Message "0..*" -- "1" User : (sender) ' (Implied by the first relationship)
+
+@enduml

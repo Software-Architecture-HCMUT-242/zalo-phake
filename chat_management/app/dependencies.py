@@ -1,12 +1,12 @@
 import logging
 from typing import Annotated
 
-import jwt
 from app.phone_utils import isVietnamesePhoneNumber
 from app.service_env import Environment
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
+from firebase_admin import auth
 
 from .config import settings
 
@@ -22,23 +22,12 @@ security = HTTPBearer(scheme_name='Authorization')
 
 class AuthenticatedUser(BaseModel):
     phoneNumber: str
-    isDiasbled: bool = False
+    isDiasbled: bool = False 
 
-async def get_current_user(token: Annotated[str, Depends(security)]):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     if Environment.is_dev_environment():
-        return AuthenticatedUser(phoneNumber=token.credentials)
+        return AuthenticatedUser(phoneNumber=credentials['phoneNumber'])
     
-    # TODO: Implement JWT token validation
-    raise HTTPException(status_code=401, detail="Not a valid token")
-    
-async def get_current_active_user(
-    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-):
-    if current_user.isDiasbled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user    
-
-def token_required(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
         
     if Environment.is_dev_environment():
@@ -48,9 +37,26 @@ def token_required(credentials: HTTPAuthorizationCredentials = Depends(security)
         return
     
     try:
-        # You'll need to set up your secret key and implement proper JWT validation
-        jwt.decode(token, settings.fastapi_secret_key, algorithms=['HS256'])
-    except jwt.ExpiredSignatureError:
+        return auth.verify_id_token(token, check_revoked=True)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token format")
+    except auth.InvalidIdTokenError:
+        raise HTTPException(status_code=401, detail="Invalid ID token")
+    except auth.ExpiredIdTokenError:
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token is invalid")
+    except auth.RevokedIdTokenError:
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+    except auth.CertificateFetchError:
+        raise HTTPException(status_code=500, detail="Error fetching certificates")
+    except auth.UserDisabledError:
+        raise HTTPException(status_code=403, detail="User account is disabled")
+    except Exception as e:
+        logger.error(f"Token verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication error")
+    
+async def get_current_active_user(
+    current_user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+):
+    if current_user.isDiasbled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user   

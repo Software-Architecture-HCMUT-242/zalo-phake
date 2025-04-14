@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .conversations import all_router as conversations_routers
 from .notifications.router import router as notifications_router
 from .ws.router import router as ws_router
+from app.dependencies import token_required
 
 # import all you need from fastapi-pagination
 
@@ -49,6 +50,11 @@ async def health_check():
     Health check endpoint for monitoring and deployment verification
     """
     return {"status": "healthy", "version": "1.0.0"}
+
+@app.get("/whoami",)
+async def whoami():
+    pass
+
 
 # app.include_router(chats_router)
 for router in conversations_routers:

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from firebase_admin import firestore
 
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
-from ..dependencies import token_required, AuthenticatedUser, get_current_active_user
+from ..dependencies import get_current_user, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
 from .schemas import Message, MessageType
 from ..notifications.service import NotificationService
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Create the main router for conversations
 router = APIRouter(
-    dependencies=[Depends(token_required)],
+    dependencies=[Depends(get_current_user)],
 )
 
 notification_service = NotificationService()

@@ -17,14 +17,14 @@ from ..firebase import firestore_db
 from ..pagination import common_pagination_parameters, PaginationParams, PaginatedResponse
 from ..time_utils import convert_timestamps
 
-from ..dependencies import token_required
+from ..dependencies import get_current_user
 
 
 logger = logging.getLogger(__name__)
 
 # Create the main router for conversations
 router = APIRouter(
-    dependencies=[Depends(token_required)],
+    dependencies=[Depends(get_current_user)],
 )
 
 

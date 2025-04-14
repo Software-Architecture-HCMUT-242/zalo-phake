@@ -5,14 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from firebase_admin import firestore
 
 from .schemas import AddMemberRequest
-from ..dependencies import AuthenticatedUser, get_current_active_user, token_required
+from ..dependencies import AuthenticatedUser, get_current_active_user, get_current_user
 from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)
 
 # Create the main router for conversations
 router = APIRouter(
-    dependencies=[Depends(token_required)],
+    dependencies=[Depends(get_current_user)],
 )
 
 @router.post('/conversations/{conversation_id}/members', status_code=200)
