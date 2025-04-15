@@ -103,11 +103,16 @@ async def register(request: Request):
         log(f'[Error] User already exist in realtime database: {vResponse["body"]}')
         raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
 
-    # [4]: Insert user and hashed dpassword to DB if not existed
+    # [4]: Insert user and hashed password to DB if not existed
     password_hash = hash(vRequest["password"])
-    database.insert(f'/User/{vRequest["phone_number"]}', {"password": password_hash,"friends": [], "groups": []})
+    database.insert(f'/User/{vRequest["phone_number"]}', {
+        "password": password_hash,
+        "name": vRequest["name"],
+        "profile_pic": None,
+        "friends": [],
+        "groups": []})
 
-    return {"success": True, "user": vResponse["body"], "retoken": True}
+    return {"success": True}
 
 
 @app.post("/auth/login", status_code=200)
@@ -154,7 +159,7 @@ async def login(request: Request):
 
     # BE doesn't need to send token back, only need to verify FE token
     # FE refresh token is received directly from Firebase, invalid after logout
-    return {"success": True, "user": user, "user_data": vResponse["body"]}
+    return {"success": True}
 
 
 @app.post("/auth/change-pass", status_code=200)
@@ -200,7 +205,7 @@ async def change_pass(request: Request):
     # [5]: Update user's password
     password_hash = hash(vRequest["password"])
     database.update(f'/User/{decoded_token["phone_number"]}/password', password_hash)
-    return {"success": True, "user_data": vResponse["body"], "retoken": True}
+    return {"success": True}
 
 
 @app.post("/auth/forgot-pass", status_code=200)
@@ -237,7 +242,7 @@ async def forgot_pass(request: Request):
     # [4]: Update user's password
     password_hash = hash(vRequest["password"])
     database.update(f'/User/{decoded_token["phone_number"]}/password', password_hash)
-    return {"success": True, "user_data": vResponse["body"], "retoken": True}
+    return {"success": True}
 
 
 @app.get("/auth/profile", status_code=200)
@@ -266,3 +271,41 @@ async def profile(request: Request):
         raise HTTPException(status_code=404, detail="[Error]: User not found in database")
 
     return {"user": user, "user_data": vResponse["body"]}
+
+@app.post("/auth/update-profile", status_code=200)
+async def update_profile(request: Request):
+    vHeader = request.headers.get("Authorization")
+    if not vHeader:
+        log(f'[Error] Authorization header not found')
+        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
+    # Extract the token (assuming it's in the format 'Bearer <token>')
+    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
+    vRequest = await request.json()
+    vData = deepcopy(vRequest)
+    vError = {}
+
+    # [1]: Validate FE token from firebase OTP
+    decoded_token = database.verify_token(vToken)
+    if not decoded_token:
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+
+    # [2]: Validate request body
+    if not validate(vData, "name", str, vError, required=False):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    if not validate(vData, "profile_pic", str, vError, required=False):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    log(f"[Debug]: Converted data:\n {vData}")
+
+    # [3]: Check if user exist in realtimeDB
+    vResponse = {}
+    database.query(f'/User/{decoded_token["phone_number"]}', response=vResponse)
+    log(f"[Debug] The realtimeDB data is: {vResponse}")
+    if vResponse["body"]:
+        log(f'[Error] User already exist in realtime database: {vResponse["body"]}')
+        raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
+
+    # [4]: Insert user and hashed password to DB if not existed
+    database.insert(f'/User/{decoded_token["phone_number"]}/name', vRequest["name"])
+    database.insert(f'/User/{decoded_token["phone_number"]}/profile_pic', vRequest["profile_pic"])
+    return {"success": True}
