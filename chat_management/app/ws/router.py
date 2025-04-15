@@ -158,111 +158,111 @@ async def is_conversation_participant(conversation_id: str, user_id: str) -> boo
 
 
 # HTTP endpoints for WebSocket-related operations
-@router.post("/user/status", status_code=status.HTTP_200_OK)
-async def update_user_status(status_data: Dict[str, Any], current_user = Depends(decode_token)):
-  """
-  Update a user's status and broadcast to relevant conversations
-  
-  Args:
-      status_data: Dictionary containing 'status' field with the new status value
-      current_user: The authenticated user (from dependency)
-  
-  Returns:
-      Success message
-  
-  Raises:
-      HTTPException: If request is invalid or if an error occurs during processing
-  """
-  if not current_user:
-    raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Authentication required"
-    )
-  
-  user_id = current_user.phoneNumber
-  
-  # Validate status data
-  if not status_data or 'status' not in status_data:
-    raise HTTPException(
-      status_code=status.HTTP_400_BAD_REQUEST,
-      detail="Missing required 'status' field"
-    )
-  
-  status_value = status_data.get('status')
-  valid_statuses = ['available', 'away', 'busy', 'invisible', 'offline']
-  
-  if status_value not in valid_statuses:
-    raise HTTPException(
-      status_code=status.HTTP_400_BAD_REQUEST,
-      detail=f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"
-    )
-  
-  try:
-    # Update user status in database
-    user_ref = firestore_db.collection('users').document(user_id)
-    await asyncio.to_thread(
-      user_ref.update,
-      {
-        'status': status_value,
-        'lastActive': firestore.SERVER_TIMESTAMP,
-        'lastActivityType': 'status_change'
-      }
-    )
-    
-    # Broadcast status change through WebSockets
-    await connection_manager.handle_user_activity(
-      user_id=user_id,
-      activity_type='status_change',
-      metadata={'status': status_value}
-    )
-    
-    return {"message": f"Status updated to '{status_value}'"}
-  
-  except Exception as e:
-    logger.error(f"Error updating user status: {str(e)}")
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Failed to update status. Please try again."
-    )
+# @router.post("/user/status", status_code=status.HTTP_200_OK)
+# async def update_user_status(status_data: Dict[str, Any], current_user = Depends(decode_token)):
+#   """
+#   Update a user's status and broadcast to relevant conversations
+#
+#   Args:
+#       status_data: Dictionary containing 'status' field with the new status value
+#       current_user: The authenticated user (from dependency)
+#
+#   Returns:
+#       Success message
+#
+#   Raises:
+#       HTTPException: If request is invalid or if an error occurs during processing
+#   """
+#   if not current_user:
+#     raise HTTPException(
+#       status_code=status.HTTP_401_UNAUTHORIZED,
+#       detail="Authentication required"
+#     )
+#
+#   user_id = current_user.phoneNumber
+#
+#   # Validate status data
+#   if not status_data or 'status' not in status_data:
+#     raise HTTPException(
+#       status_code=status.HTTP_400_BAD_REQUEST,
+#       detail="Missing required 'status' field"
+#     )
+#
+#   status_value = status_data.get('status')
+#   valid_statuses = ['available', 'away', 'busy', 'invisible', 'offline']
+#
+#   if status_value not in valid_statuses:
+#     raise HTTPException(
+#       status_code=status.HTTP_400_BAD_REQUEST,
+#       detail=f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"
+#     )
+#
+#   try:
+#     # Update user status in database
+#     user_ref = firestore_db.collection('users').document(user_id)
+#     await asyncio.to_thread(
+#       user_ref.update,
+#       {
+#         'status': status_value,
+#         'lastActive': firestore.SERVER_TIMESTAMP,
+#         'lastActivityType': 'status_change'
+#       }
+#     )
+#
+#     # Broadcast status change through WebSockets
+#     await connection_manager.handle_user_activity(
+#       user_id=user_id,
+#       activity_type='status_change',
+#       metadata={'status': status_value}
+#     )
+#
+#     return {"message": f"Status updated to '{status_value}'"}
+#
+#   except Exception as e:
+#     logger.error(f"Error updating user status: {str(e)}")
+#     raise HTTPException(
+#       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#       detail="Failed to update status. Please try again."
+#     )
 
 
-@router.get("/connections/info", status_code=status.HTTP_200_OK)
-async def get_connection_info(current_user = Depends(decode_token)):
-  """
-  Get information about the current user's WebSocket connections
-  
-  Args:
-      current_user: The authenticated user (from dependency)
-  
-  Returns:
-      Connection information including count and status
-  
-  Raises:
-      HTTPException: If request is invalid or if an error occurs during processing
-  """
-  if not current_user:
-    raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Authentication required"
-    )
-  
-  user_id = current_user.phoneNumber
-  
-  try:
-    # Get connection counts
-    user_connection_count = connection_manager.get_user_connection_count(user_id)
-    total_users = connection_manager.get_connected_users_count()
-    
-    return {
-      "user_id": user_id,
-      "active_connections": user_connection_count,
-      "is_connected": connection_manager.is_user_connected(user_id),
-      "total_connected_users": total_users
-    }
-    
-  except Exception as e:
-    logger.error(f"Error retrieving connection info: {str(e)}")
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Failed to retrieve connection information."
-    )
+# @router.get("/connections/info", status_code=status.HTTP_200_OK)
+# async def get_connection_info(current_user = Depends(decode_token)):
+#   """
+#   Get information about the current user's WebSocket connections
+#
+#   Args:
+#       current_user: The authenticated user (from dependency)
+#
+#   Returns:
+#       Connection information including count and status
+#
+#   Raises:
+#       HTTPException: If request is invalid or if an error occurs during processing
+#   """
+#   if not current_user:
+#     raise HTTPException(
+#       status_code=status.HTTP_401_UNAUTHORIZED,
+#       detail="Authentication required"
+#     )
+#
+#   user_id = current_user.phoneNumber
+#
+#   try:
+#     # Get connection counts
+#     user_connection_count = connection_manager.get_user_connection_count(user_id)
+#     total_users = connection_manager.get_connected_users_count()
+#
+#     return {
+#       "user_id": user_id,
+#       "active_connections": user_connection_count,
+#       "is_connected": connection_manager.is_user_connected(user_id),
+#       "total_connected_users": total_users
+#     }
+#
+#   except Exception as e:
+#     logger.error(f"Error retrieving connection info: {str(e)}")
+#     raise HTTPException(
+#       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#       detail="Failed to retrieve connection information."
+#     )

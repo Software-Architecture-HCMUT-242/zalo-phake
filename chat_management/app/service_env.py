@@ -5,6 +5,7 @@ class Environment:
         env = os.getenv('ENVIRONMENT', 'DEV')
         if env not in ['DEV', 'PROD']:
             raise ValueError("ENVIRONMENT must be either 'DEV' or 'PROD'")
+        return env
 
     @staticmethod
     def is_dev_environment():

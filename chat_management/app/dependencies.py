@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from app.phone_utils import isVietnamesePhoneNumber
 from app.service_env import Environment
@@ -25,7 +25,7 @@ class AuthenticatedUser(BaseModel):
     phoneNumber: str
     isDisabled: bool = False
 
-async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
     token = credentials.credentials
         
     if Environment.is_dev_environment():
@@ -54,7 +54,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
     
 async def get_current_active_user(
     decoded_token: Annotated[AuthenticatedUser, Depends(decode_token)],
-):
+) -> AuthenticatedUser:
     if decoded_token['isDisabled']:
         raise HTTPException(status_code=400, detail="Inactive user")
     return AuthenticatedUser(
