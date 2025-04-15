@@ -15,9 +15,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(
-    dependencies=[Depends(get_current_active_user)],
-)
+router = APIRouter()
 
 # Request validation models
 class StatusUpdate(BaseModel):
