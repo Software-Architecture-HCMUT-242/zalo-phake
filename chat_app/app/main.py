@@ -84,7 +84,13 @@ async def register(request: Request):
     if not validate(vData, "password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
-    parsed = phonenumbers.parse(vRequest["phone_number"])
+    parsed = {}
+    try:
+        parsed = phonenumbers.parse(vRequest["phone_number"])
+        log(f'[Debug] Parsed phone number: {parsed}')
+    except Exception as e:
+        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
     if not phonenumbers.is_valid_number(parsed):
         log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
         raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
@@ -115,6 +121,16 @@ async def login(request: Request):
     if not validate(vData, "password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
+    parsed = {}
+    try:
+        parsed = phonenumbers.parse(vRequest["phone_number"])
+        log(f'[Debug] Parsed phone number: {parsed}')
+    except Exception as e:
+        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    if not phonenumbers.is_valid_number(parsed):
+        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
 
     # [2]: Check if user exist in Authen
     user = database.query_user_by_phone_number(vRequest["phone_number"])
