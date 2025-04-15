@@ -5,22 +5,30 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
-@lru_cache()
+
 def get_redis_config():
     """
     Get Redis connection parameters from environment variables
-    
+
     Returns:
         dict: Configuration dictionary for Redis connection
     """
-    return {
+    conf = {
         'host': os.environ.get('REDIS_HOST', 'localhost'),
         'port': int(os.environ.get('REDIS_PORT', 6379)),
         'db': int(os.environ.get('REDIS_DB', 0)),
-        'password': os.environ.get('REDIS_PASSWORD', None),
-        # 'ssl': os.environ.get('REDIS_SSL', 'false').lower() == 'true',
-        'decode_responses': True
+        'password': os.environ.get('REDIS_PASSWORD', "123456789"),
+        'decode_responses': True,
+        'socket_timeout': 5,
+        'username': os.environ.get('REDIS_USERNAME', 'default'),
     }
+    if os.environ.get('REDIS_SSL', 'false').lower() == 'true':
+        conf['connection_class'] = redis.SSLConnection
+    return conf
+
+@lru_cache()
+def get_redis_config_cache():
+    return get_redis_config()
 
 async def get_redis_connection():
     """
@@ -33,7 +41,7 @@ async def get_redis_connection():
         Exception: If Redis connection fails
     """
     try:
-        config = get_redis_config()
+        config = get_redis_config_cache()
         connection_pool = redis.ConnectionPool(**config)
         return redis.Redis(connection_pool=connection_pool)
     except Exception as e:

@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[Depends(get_current_active_user)],
+)
 
 # Request validation models
 class StatusUpdate(BaseModel):
@@ -32,7 +34,7 @@ class TypingNotification(BaseModel):
     conversation_id: str = Field(..., description="ID of the conversation where typing is occurring")
 
 
-@router.post("/api/user/status", status_code=status.HTTP_200_OK)
+@router.post("/user/status", status_code=status.HTTP_200_OK)
 async def update_user_status(status_data: StatusUpdate, current_user = Depends(get_current_active_user)):
     """
     Update a user's status and broadcast to relevant conversations
@@ -79,7 +81,7 @@ async def update_user_status(status_data: StatusUpdate, current_user = Depends(g
         )
 
 
-@router.post("/api/messages/read", status_code=status.HTTP_200_OK)
+@router.post("/messages/read", status_code=status.HTTP_200_OK)
 async def mark_message_read(read_data: MessageRead, current_user = Depends(get_current_active_user)):
     """
     Mark a message as read by the current user
@@ -121,7 +123,7 @@ async def mark_message_read(read_data: MessageRead, current_user = Depends(get_c
         )
 
 
-@router.post("/api/conversations/{conversation_id}/typing", status_code=status.HTTP_200_OK)
+@router.post("/conversations/{conversation_id}/typing", status_code=status.HTTP_200_OK)
 async def send_typing_notification(conversation_id: str, current_user = Depends(get_current_active_user)):
     """
     Send a typing notification to a conversation
@@ -172,7 +174,7 @@ async def send_typing_notification(conversation_id: str, current_user = Depends(
         )
 
 
-@router.get("/api/connections/info", status_code=status.HTTP_200_OK)
+@router.get("/connections/info", status_code=status.HTTP_200_OK)
 async def get_connection_info(current_user = Depends(get_current_active_user)):
     """
     Get information about the current user's WebSocket connections
@@ -230,7 +232,7 @@ async def get_connection_info(current_user = Depends(get_current_active_user)):
         )
 
 
-@router.get("/api/connections/stats", status_code=status.HTTP_200_OK)
+@router.get("/connections/stats", status_code=status.HTTP_200_OK)
 async def get_connection_stats(current_user = Depends(get_current_active_user)):
     """
     Get global statistics about WebSocket connections across all instances
@@ -272,7 +274,7 @@ async def get_connection_stats(current_user = Depends(get_current_active_user)):
         )
 
 
-@router.get("/api/health", status_code=status.HTTP_200_OK)
+@router.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
     """
     Health check endpoint for load balancers and monitoring

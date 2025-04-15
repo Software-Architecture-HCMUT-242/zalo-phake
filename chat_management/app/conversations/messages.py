@@ -3,12 +3,14 @@ import json
 import logging
 import os
 import socket
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, status
 from firebase_admin import firestore
+from google.cloud.firestore_v1.base_query import BaseQuery
 
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user
@@ -32,7 +34,7 @@ connection_manager = get_connection_manager()
 tags = ["Messages"]
 
 
-@router.get('/{conversation_id}/messages', response_model=PaginatedResponse[Message], tags=tags)
+@router.get('/conversations/{conversation_id}/messages', response_model=PaginatedResponse[Message], tags=tags)
 async def get_conversation_messages(
         conversation_id: str,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
@@ -73,7 +75,7 @@ async def get_conversation_messages(
 
     # Query messages for this conversation
     messages_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages')
-    query = messages_ref.order_by('timestamp', direction='DESCENDING')
+    query = messages_ref.order_by('timestamp', direction=BaseQuery.DESCENDING)
 
     # Get total count for pagination
     try:
@@ -104,18 +106,18 @@ async def get_conversation_messages(
             msg_data = msg.to_dict()
             # Convert Firestore timestamps to datetime objects
             msg_data = convert_timestamps(msg_data)
-
             # Create Message object
             messages.append(Message(
                 messageId=msg.id,
                 senderId=msg_data.get('senderId'),
                 content=msg_data.get('content', ''),
                 messageType=msg_data.get('messageType', MessageType.TEXT),
-                timestamp=msg_data.get('timestamp', datetime.now(timezone.utc)),
+                timestamp=msg_data.get('timestamp'),
                 readBy=msg_data.get('readBy', [])
             ))
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {str(e)}")
+            print(traceback.format_exc())
             # Continue to next message instead of failing the entire request
 
     # Create the paginated response
@@ -127,7 +129,7 @@ async def get_conversation_messages(
     )
 
 
-@router.post('/{conversation_id}/messages')
+@router.post('/conversations/{conversation_id}/messages', tags=tags)
 async def send_conversation_message(
         conversation_id: str,
         message: MessageCreate,
@@ -297,7 +299,7 @@ async def send_conversation_message(
     }
 
 
-@router.post('/{conversation_id}/messages/{message_id}/read', tags=tags)
+@router.post('/conversations/{conversation_id}/messages/{message_id}/read', tags=tags)
 async def mark_message_as_read(
         conversation_id: str,
         message_id: str,
@@ -441,7 +443,7 @@ async def mark_message_as_read(
 
 
 # Add a REST API endpoint for typing indicators
-@router.post('/{conversation_id}/typing', tags=tags)
+@router.post('/conversations/{conversation_id}/typing', tags=tags)
 async def send_typing_notification(
         conversation_id: str,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]

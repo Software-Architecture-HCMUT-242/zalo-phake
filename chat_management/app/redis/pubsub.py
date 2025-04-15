@@ -179,6 +179,8 @@ async def start_pubsub_listener():
         
         except Exception as e:
             logger.error(f"PubSub listener error: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
             
             # Implement retry logic
             current_retry += 1

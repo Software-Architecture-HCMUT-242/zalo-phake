@@ -23,7 +23,7 @@ security = HTTPBearer(scheme_name='Authorization')
 
 class AuthenticatedUser(BaseModel):
     phoneNumber: str
-    isDiasbled: bool = False 
+    isDisabled: bool = False
 
 async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
@@ -32,7 +32,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         logger.info(f"Token: {token}")
         if not isVietnamesePhoneNumber(token):
             raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
-        return AuthenticatedUser(phoneNumber=convert_to_vietnamese_phone_number(token), isDiasbled=False)
+        return dict(phoneNumber=convert_to_vietnamese_phone_number(token), isDisabled=False)
     
     try:
         return auth.verify_id_token(token, check_revoked=True)
@@ -55,7 +55,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 async def get_current_active_user(
     decoded_token: Annotated[AuthenticatedUser, Depends(decode_token)],
 ):
-    if decoded_token.isDiasbled:
+    if decoded_token['isDisabled']:
         raise HTTPException(status_code=400, detail="Inactive user")
     return AuthenticatedUser(
         phoneNumber=convert_to_vietnamese_phone_number(decoded_token["phoneNumber"]),
