@@ -40,7 +40,7 @@ def ping():
 def hash(phone_number):
     return hashlib.sha256(phone_number.encode("utf-8")).hexdigest()
 
-def validate(body, key, type_origin, type_convert, error, required=False):
+def validate(body, key, type_origin, error, required=False):
     # [1]: Check if body has key
     if (key not in body) and required:
         error["description"] = f"[Error] Can't find key \"{key}\""
@@ -53,13 +53,6 @@ def validate(body, key, type_origin, type_convert, error, required=False):
         log(error["description"])
         return False
 
-    # [3]: Try conversion to target type (to check number string like phone number)
-    try:
-        body[key] = type_convert(body[key])
-    except ValueError:
-        error["description"] = f"[Error] Cannot convert \"{key}\" to {type_convert}"
-        log(error["description"])
-        return False
     return True
 
 
@@ -84,11 +77,11 @@ async def register(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [2]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True):
+    if not validate(vData, "phone_number", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "name", str, str, vError, required=True):
+    if not validate(vData, "name", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, str, vError, required=True):
+    if not validate(vData, "password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
     parsed = phonenumbers.parse(vRequest["phone_number"])
@@ -117,9 +110,9 @@ async def login(request: Request):
     vData = deepcopy(vRequest)
     vError = {}
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, int, vError, required=True):
+    if not validate(vData, "phone_number", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, str, vError, required=True):
+    if not validate(vData, "password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
@@ -167,9 +160,9 @@ async def change_pass(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [2]: Validate request body
-    if not validate(vData, "old_password", str, str, vError, required=True):
+    if not validate(vData, "old_password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "new_password", str, str, vError, required=True):
+    if not validate(vData, "new_password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
@@ -213,7 +206,7 @@ async def forgot_pass(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [2]: Validate request body
-    if not validate(vData, "new_password", str, str, vError, required=True):
+    if not validate(vData, "new_password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 

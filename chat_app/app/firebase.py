@@ -77,19 +77,44 @@ class FirebaseDB():
         return True
     
     def create_user(self, *args, **kwargs):
-        return auth.create_user(*args, **kwargs)
+        try:
+            user = auth.create_user(*args, **kwargs)
+            return user
+        except Exception as e:
+            log(f"Error creating user: {e}")
+            return None
 
     def query_user_by_email(self, email):
-        return auth.get_user_by_email(email)
+        try:
+            user = auth.get_user_by_email(email)
+            return user
+        except Exception as e:
+            log(f"Error querying user: {e}")
+            return None
     
     def query_user_by_phone_number(self, phone):
-        return auth.get_user_by_phone_number(phone)
+        try:
+            user = auth.get_user_by_phone_number(phone)
+            return user
+        except Exception as e:
+            log(f"Error querying user: {e}")
+            return None
     
     def query_user_id(self, uid):
-        return auth.get_user(uid)
+        try:
+            user = auth.get_user(uid)
+            return user
+        except Exception as e:
+            log(f"Error querying user: {e}")
+            return None
     
     def update_user(self, *args, **kwargs):
-        return auth.update_user(*args, **kwargs)
+        try:
+            user = auth.update_user(*args, **kwargs)
+            return user
+        except Exception as e:
+            log(f"Error updating user: {e}")
+            return None
 
     def verify_token(self, id_token):
         # Verify firebase token from FE
