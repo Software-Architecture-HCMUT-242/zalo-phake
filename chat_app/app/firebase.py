@@ -76,22 +76,22 @@ class FirebaseDB():
         new_ref.child(response).delete()
         return True
     
-    def create_user(*args, **kwargs):
+    def create_user(self, *args, **kwargs):
         return auth.create_user(*args, **kwargs)
 
-    def query_user_by_email(email):
+    def query_user_by_email(self, email):
         return auth.get_user_by_email(email)
     
-    def query_user_by_phone_number(phone):
+    def query_user_by_phone_number(self, phone):
         return auth.get_user_by_phone_number(phone)
     
-    def query_user_id(uid):
+    def query_user_id(self, uid):
         return auth.get_user(uid)
     
-    def update_user(*args, **kwargs):
+    def update_user(self, *args, **kwargs):
         return auth.update_user(*args, **kwargs)
 
-    def verify_token(id_token):
+    def verify_token(self, id_token):
         # Verify firebase token from FE
         try:
             decoded_token = auth.verify_id_token(id_token)
