@@ -4,6 +4,7 @@ import logging
 import os
 import socket
 import time
+import traceback
 
 from ..dependencies import get_current_active_user
 from ..firebase import firestore_db
@@ -224,6 +225,7 @@ async def get_connection_info(current_user = Depends(get_current_active_user)):
         
     except Exception as e:
         logger.error(f"Error retrieving connection info: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve connection information."
