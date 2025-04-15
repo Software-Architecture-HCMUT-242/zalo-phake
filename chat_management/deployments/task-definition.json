@@ -58,6 +58,10 @@
         {
           "name": "REDIS_PASSWORD",
           "value": "<redis_password>"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "DEV"
         }
       ],
       "logConfiguration": {

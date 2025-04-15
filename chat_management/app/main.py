@@ -40,7 +40,7 @@ PREFIX = get_prefix(API_VERSION)
 
 logger.info(f"Start HTTP server with prefix: {PREFIX}")
 
-app = FastAPI(root_path=PREFIX)
+app = FastAPI(root_path=PREFIX, title="Chat Management API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
