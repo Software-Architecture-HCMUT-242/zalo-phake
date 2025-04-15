@@ -1,20 +1,33 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Any
 
 from fastapi import WebSocket
 from firebase_admin import firestore
 
 from ..firebase import firestore_db
+from ..redis.connection import get_redis_connection
 
 logger = logging.getLogger(__name__)
+
+# Global connection manager instance
+connection_manager = None
+
+# Function to get the connection manager singleton
+def get_connection_manager():
+  global connection_manager
+  if connection_manager is None:
+    connection_manager = ConnectionManager()
+  return connection_manager
 
 class ConnectionManager:
   def __init__(self):
     self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
     self.user_conversations: Dict[str, Set[str]] = {}  # Maps user IDs to their conversation IDs
+    self.instance_id = uuid.uuid4().hex  # Generate a unique ID for this instance
 
   async def connect(self, websocket: WebSocket, user_id: str):
     """
@@ -298,6 +311,45 @@ class ConnectionManager:
           
     except Exception as e:
       logger.error(f"Error handling user activity: {str(e)}")
+  
+  async def get_user_conversations(self, user_id: str) -> set:
+    """
+    Get all conversations that a user participates in
+    
+    Args:
+        user_id: The ID of the user
+        
+    Returns:
+        set: Set of conversation IDs the user participates in
+    """
+    try:
+      # Check if we already have the user's conversations cached
+      if user_id in self.user_conversations and self.user_conversations[user_id]:
+        return self.user_conversations[user_id]
+      
+      # Otherwise, query Firestore for the user's conversations
+      conversations = set()
+      
+      # Query conversations where user is a participant
+      conversations_ref = firestore_db.collection('conversations')
+      query = conversations_ref.where('participants', 'array_contains', user_id)
+      
+      # Execute query
+      conversation_docs = await asyncio.to_thread(query.get)
+      
+      # Extract conversation IDs
+      for doc in conversation_docs:
+        conversations.add(doc.id)
+      
+      # Cache the result
+      self.user_conversations[user_id] = conversations
+      
+      logger.debug(f"Loaded {len(conversations)} conversations for user {user_id}")
+      return conversations
+      
+    except Exception as e:
+      logger.error(f"Error getting user conversations: {str(e)}")
+      return set()
   
   async def broadcast_user_status(self, user_id: str, status: str):
     """

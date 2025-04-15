@@ -1,6 +1,6 @@
 import json
 import logging
-import os
+from .connection import get_redis_config
 from typing import Dict, Any
 
 import redis
@@ -16,24 +16,17 @@ class RedisClient:
         Initialize Redis client with connection settings from environment variables
         """
         # Get Redis configuration from environment variables
-        redis_host = os.getenv("REDIS_HOST", "localhost")
-        redis_port = int(os.getenv("REDIS_PORT", "6379"))
-        redis_password = os.getenv("REDIS_PASSWORD", None)
-        redis_db = int(os.getenv("REDIS_DB", "0"))
+        conf = get_redis_config()
 
         try:
             # Create Redis client
             self.redis = redis.Redis(
-                host=redis_host,
-                port=redis_port,
-                password=redis_password,
-                db=redis_db,
-                decode_responses=True  # Automatically decode bytes to str
+                **conf
             )
-            logger.info(f"Redis client initialized with host={redis_host}, port={redis_port}")
-            
+
             # Test connection
             self.redis.ping()
+            logger.info(f"Redis client initialized with")
             logger.info("Successfully connected to Redis")
         except redis.RedisError as e:
             logger.error(f"Failed to connect to Redis: {str(e)}")

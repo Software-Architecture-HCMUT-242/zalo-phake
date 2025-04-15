@@ -7,7 +7,17 @@ from firebase_admin import credentials, db, firestore
 
 
 class FirebaseDB:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(FirebaseDB, cls).__new__(cls)
+            cls._instance.initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self.initialized:
+            return
         print("FirebaseDB.__init__() called")
         # Dir to key
         # should fix this to use GOOGLE_APPLICATION_CREDENTIALS env https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments
@@ -18,7 +28,9 @@ class FirebaseDB:
         self.root_path = "/"
         self.app = None
         self.ref = None
+        self.firestore_db = None
         self.connect()
+        self.initialized = True
         return
 
     def get_realtime_db(self) -> db.Reference:
@@ -27,11 +39,11 @@ class FirebaseDB:
     
     def get_firestore_db(self) -> firebase_admin.db:
         # Return a reference to the Firebase client
-        return firestore.client()
-    
+        return self.firestore_db
+
     def connect(self) -> None:
         # Initialize Firebase Admin SDK and set database reference
-        # Authenticate using credentials from environment variable
+        # to Authenticate using credentials from environment variable
         cert_json = os.getenv("FIREBASE_SECRET")
         if not cert_json:
             raise ValueError("Environment variable FIREBASE_SECRET is not set")
@@ -39,60 +51,15 @@ class FirebaseDB:
         if type(cert_dict) == str:
             cert_dict = json.loads(cert_dict)
         cred = credentials.Certificate(cert_dict)
-        self.app = firebase_admin.initialize_app(credential=cred,
-            options={"databaseURL": self.db_url}
+
+        self.app = firebase_admin.initialize_app(
+            credential=cred,
+            options={"databaseURL": self.db_url},
         )
+        self.firestore_db = firestore.client(self.app)
 
         # Get references to DB parent nodes
         self.ref = db.reference(self.root_path)
-        self.users_ref = db.reference("Users")
         print(self.app.name)
         print("Connected to Firebase Realtime Database")
         return
-
-    def disconnect(self) -> None:
-        # Firebase Realtime Database does not require explicit disconnection
-        self.app = None
-        self.ref = None
-        print("Disconnected from Firebase Realtime Database")
-        return
-
-    def insert(self, path: str, data: typing.Any) -> bool:
-        # Insert data into Firebase path
-        print(f'[Debug] Firebase insert "{data}" to "{path}"')
-        try:
-            new_ref = db.reference(path)
-        except ValueError:
-            print(f"[Error] Cannot get reference from {path}")
-            return False
-        new_ref.set(data)
-        return True  # Firebase generates a unique key
-
-    def query(self, path: str, response: typing.Optional[typing.Any]) -> bool:
-        # Find data matching a path
-        print(f'[Debug] Firebase query "{path}"')
-        try:
-            response["body"] = db.reference(path).get()
-        except ValueError:
-            print(f"[Error] Cannot query {path}")
-            return False
-        return True
-
-    def update(
-        self, path: str, data: typing.Any, response: typing.Optional[typing.Any]
-    ) -> bool:
-        # Update data matching a path
-        print(f'[Debug] Firebase update "{data}" to "{path}"')
-        if not self.query(path, response):
-            return False
-        self.insert(path, data)
-        return True
-
-    def delete(self, path: str, response: typing.Optional[typing.Any]) -> bool:
-        # Delete data matching a path
-        print(f'[Debug] Firebase delete data at "{path}"')
-        if not self.query(path, response):
-            return False
-        new_ref = db.reference(path)
-        new_ref.child(response).delete()
-        return True

@@ -2,7 +2,9 @@ import logging
 import os
 import asyncio
 
-from app.config import get_prefix
+from firebase_admin import firestore
+
+from .config import get_prefix
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,7 +13,8 @@ from .notifications.router import router as notifications_router
 from .ws.router import router as ws_router
 from .ws.api_endpoints import router as ws_api_router
 from .redis.pubsub import start_pubsub_listener
-from app.dependencies import decode_token
+from .dependencies import decode_token
+from .firebase import firestore_db
 
 # import all you need from fastapi-pagination
 
@@ -37,7 +40,7 @@ PREFIX = get_prefix(API_VERSION)
 
 logger.info(f"Start HTTP server with prefix: {PREFIX}")
 
-app = FastAPI(root_path=PREFIX)
+app = FastAPI(root_path=PREFIX, title="Chat Management API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,13 +49,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """
-    Health check endpoint for monitoring and deployment verification
-    """
-    return {"status": "healthy", "version": "1.0.0"}
 
 @app.get("/whoami", tags=["Dev test"])
 async def whoami(current_user: dict = Depends(decode_token)):
@@ -79,12 +75,12 @@ async def startup_event():
     logger.info("Started Redis PubSub listener for WebSocket message distribution")
     
     # Initialize health check document in Firestore if it doesn't exist
-    from .firebase import firestore_db
+
     health_ref = firestore_db.collection('system').document('health')
     if not health_ref.get().exists:
         health_ref.set({
             'status': 'healthy',
-            'created_at': firestore_db.SERVER_TIMESTAMP
+            'created_at': firestore.SERVER_TIMESTAMP
         })
         logger.info("Initialized health check document in Firestore")
     

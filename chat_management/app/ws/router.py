@@ -8,7 +8,7 @@ from app.service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore
 
-from .websocket_manager import ConnectionManager
+# ConnectionManager is now imported through get_connection_manager
 from ..dependencies import decode_token
 from ..firebase import firestore_db
 
@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 # Note: WebSocket routes don't use the usual APIRouter dependencies
 router = APIRouter()
 
-# Global connection manager (initialized in the module)
-connection_manager = ConnectionManager()
+# Get the connection manager from websocket_manager module
+from .websocket_manager import get_connection_manager
+
+# Get the global connection manager
+connection_manager = get_connection_manager()
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -116,117 +119,150 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     # Ensure connection is removed on any error
     connection_manager.disconnect(user_id, connection_id)
 
-# Export the connection manager so it can be used by other modules
-def get_connection_manager():
-  return connection_manager
+# The get_connection_manager function is now imported from websocket_manager
+
+
+async def is_conversation_participant(conversation_id: str, user_id: str) -> bool:
+  """
+  Check if a user is a participant in a given conversation
+  
+  Args:
+      conversation_id: ID of the conversation to check
+      user_id: ID of the user to check (phone number)
+  
+  Returns:
+      bool: True if the user is a participant, False otherwise
+  
+  Raises:
+      Exception: If there's an error accessing Firestore
+  """
+  try:
+    # Get the conversation document from Firestore
+    conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+    conversation = await asyncio.to_thread(conversation_ref.get)
+    
+    # Check if conversation exists
+    if not conversation.exists:
+      logger.warning(f"Conversation {conversation_id} not found when checking participation")
+      return False
+    
+    # Get the participants list and check if user is in it
+    conversation_data = conversation.to_dict()
+    participants = conversation_data.get('participants', [])
+    
+    return user_id in participants
+    
+  except Exception as e:
+    logger.error(f"Error checking conversation participation: {str(e)}")
+    raise e
 
 
 # HTTP endpoints for WebSocket-related operations
-@router.post("/user/status", status_code=status.HTTP_200_OK)
-async def update_user_status(status_data: Dict[str, Any], current_user = Depends(decode_token)):
-  """
-  Update a user's status and broadcast to relevant conversations
-  
-  Args:
-      status_data: Dictionary containing 'status' field with the new status value
-      current_user: The authenticated user (from dependency)
-  
-  Returns:
-      Success message
-  
-  Raises:
-      HTTPException: If request is invalid or if an error occurs during processing
-  """
-  if not current_user:
-    raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Authentication required"
-    )
-  
-  user_id = current_user.phoneNumber
-  
-  # Validate status data
-  if not status_data or 'status' not in status_data:
-    raise HTTPException(
-      status_code=status.HTTP_400_BAD_REQUEST,
-      detail="Missing required 'status' field"
-    )
-  
-  status_value = status_data.get('status')
-  valid_statuses = ['available', 'away', 'busy', 'invisible', 'offline']
-  
-  if status_value not in valid_statuses:
-    raise HTTPException(
-      status_code=status.HTTP_400_BAD_REQUEST,
-      detail=f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"
-    )
-  
-  try:
-    # Update user status in database
-    user_ref = firestore_db.collection('users').document(user_id)
-    await asyncio.to_thread(
-      user_ref.update,
-      {
-        'status': status_value,
-        'lastActive': firestore.SERVER_TIMESTAMP,
-        'lastActivityType': 'status_change'
-      }
-    )
-    
-    # Broadcast status change through WebSockets
-    await connection_manager.handle_user_activity(
-      user_id=user_id,
-      activity_type='status_change',
-      metadata={'status': status_value}
-    )
-    
-    return {"message": f"Status updated to '{status_value}'"}
-  
-  except Exception as e:
-    logger.error(f"Error updating user status: {str(e)}")
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Failed to update status. Please try again."
-    )
+# @router.post("/user/status", status_code=status.HTTP_200_OK)
+# async def update_user_status(status_data: Dict[str, Any], current_user = Depends(decode_token)):
+#   """
+#   Update a user's status and broadcast to relevant conversations
+#
+#   Args:
+#       status_data: Dictionary containing 'status' field with the new status value
+#       current_user: The authenticated user (from dependency)
+#
+#   Returns:
+#       Success message
+#
+#   Raises:
+#       HTTPException: If request is invalid or if an error occurs during processing
+#   """
+#   if not current_user:
+#     raise HTTPException(
+#       status_code=status.HTTP_401_UNAUTHORIZED,
+#       detail="Authentication required"
+#     )
+#
+#   user_id = current_user.phoneNumber
+#
+#   # Validate status data
+#   if not status_data or 'status' not in status_data:
+#     raise HTTPException(
+#       status_code=status.HTTP_400_BAD_REQUEST,
+#       detail="Missing required 'status' field"
+#     )
+#
+#   status_value = status_data.get('status')
+#   valid_statuses = ['available', 'away', 'busy', 'invisible', 'offline']
+#
+#   if status_value not in valid_statuses:
+#     raise HTTPException(
+#       status_code=status.HTTP_400_BAD_REQUEST,
+#       detail=f"Invalid status value. Must be one of: {', '.join(valid_statuses)}"
+#     )
+#
+#   try:
+#     # Update user status in database
+#     user_ref = firestore_db.collection('users').document(user_id)
+#     await asyncio.to_thread(
+#       user_ref.update,
+#       {
+#         'status': status_value,
+#         'lastActive': firestore.SERVER_TIMESTAMP,
+#         'lastActivityType': 'status_change'
+#       }
+#     )
+#
+#     # Broadcast status change through WebSockets
+#     await connection_manager.handle_user_activity(
+#       user_id=user_id,
+#       activity_type='status_change',
+#       metadata={'status': status_value}
+#     )
+#
+#     return {"message": f"Status updated to '{status_value}'"}
+#
+#   except Exception as e:
+#     logger.error(f"Error updating user status: {str(e)}")
+#     raise HTTPException(
+#       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#       detail="Failed to update status. Please try again."
+#     )
 
 
-@router.get("/connections/info", status_code=status.HTTP_200_OK)
-async def get_connection_info(current_user = Depends(decode_token)):
-  """
-  Get information about the current user's WebSocket connections
-  
-  Args:
-      current_user: The authenticated user (from dependency)
-  
-  Returns:
-      Connection information including count and status
-  
-  Raises:
-      HTTPException: If request is invalid or if an error occurs during processing
-  """
-  if not current_user:
-    raise HTTPException(
-      status_code=status.HTTP_401_UNAUTHORIZED,
-      detail="Authentication required"
-    )
-  
-  user_id = current_user.phoneNumber
-  
-  try:
-    # Get connection counts
-    user_connection_count = connection_manager.get_user_connection_count(user_id)
-    total_users = connection_manager.get_connected_users_count()
-    
-    return {
-      "user_id": user_id,
-      "active_connections": user_connection_count,
-      "is_connected": connection_manager.is_user_connected(user_id),
-      "total_connected_users": total_users
-    }
-    
-  except Exception as e:
-    logger.error(f"Error retrieving connection info: {str(e)}")
-    raise HTTPException(
-      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-      detail="Failed to retrieve connection information."
-    )
+# @router.get("/connections/info", status_code=status.HTTP_200_OK)
+# async def get_connection_info(current_user = Depends(decode_token)):
+#   """
+#   Get information about the current user's WebSocket connections
+#
+#   Args:
+#       current_user: The authenticated user (from dependency)
+#
+#   Returns:
+#       Connection information including count and status
+#
+#   Raises:
+#       HTTPException: If request is invalid or if an error occurs during processing
+#   """
+#   if not current_user:
+#     raise HTTPException(
+#       status_code=status.HTTP_401_UNAUTHORIZED,
+#       detail="Authentication required"
+#     )
+#
+#   user_id = current_user.phoneNumber
+#
+#   try:
+#     # Get connection counts
+#     user_connection_count = connection_manager.get_user_connection_count(user_id)
+#     total_users = connection_manager.get_connected_users_count()
+#
+#     return {
+#       "user_id": user_id,
+#       "active_connections": user_connection_count,
+#       "is_connected": connection_manager.is_user_connected(user_id),
+#       "total_connected_users": total_users
+#     }
+#
+#   except Exception as e:
+#     logger.error(f"Error retrieving connection info: {str(e)}")
+#     raise HTTPException(
+#       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#       detail="Failed to retrieve connection information."
+#     )

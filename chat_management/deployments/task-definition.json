@@ -50,6 +50,18 @@
         {
           "name": "FIREBASE_SECRET",
           "value": "<firebase_secret>"
+        },
+        {
+          "name": "REDIS_HOST",
+          "value": "<redis_host>"
+        },
+        {
+          "name": "REDIS_PASSWORD",
+          "value": "<redis_password>"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "DEV"
         }
       ],
       "logConfiguration": {

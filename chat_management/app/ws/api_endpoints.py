@@ -4,16 +4,15 @@ import logging
 import os
 import socket
 import time
-from typing import Dict, Any, Optional, List
-
-from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, Field
-from firebase_admin import firestore
+import traceback
 
 from ..dependencies import get_current_active_user
 from ..firebase import firestore_db
 from ..redis.connection import get_redis_connection
-from .router import get_connection_manager, is_conversation_participant
+from ..ws.router import is_conversation_participant
+from ..ws.websocket_manager import get_connection_manager
+from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ class TypingNotification(BaseModel):
     conversation_id: str = Field(..., description="ID of the conversation where typing is occurring")
 
 
-@router.post("/api/user/status", status_code=status.HTTP_200_OK)
+@router.post("/user/status", status_code=status.HTTP_200_OK)
 async def update_user_status(status_data: StatusUpdate, current_user = Depends(get_current_active_user)):
     """
     Update a user's status and broadcast to relevant conversations
@@ -81,7 +80,7 @@ async def update_user_status(status_data: StatusUpdate, current_user = Depends(g
         )
 
 
-@router.post("/api/messages/read", status_code=status.HTTP_200_OK)
+@router.post("/messages/read", status_code=status.HTTP_200_OK)
 async def mark_message_read(read_data: MessageRead, current_user = Depends(get_current_active_user)):
     """
     Mark a message as read by the current user
@@ -123,7 +122,7 @@ async def mark_message_read(read_data: MessageRead, current_user = Depends(get_c
         )
 
 
-@router.post("/api/conversations/{conversation_id}/typing", status_code=status.HTTP_200_OK)
+@router.post("/conversations/{conversation_id}/typing", status_code=status.HTTP_200_OK)
 async def send_typing_notification(conversation_id: str, current_user = Depends(get_current_active_user)):
     """
     Send a typing notification to a conversation
@@ -174,7 +173,7 @@ async def send_typing_notification(conversation_id: str, current_user = Depends(
         )
 
 
-@router.get("/api/connections/info", status_code=status.HTTP_200_OK)
+@router.get("/connections/info", status_code=status.HTTP_200_OK)
 async def get_connection_info(current_user = Depends(get_current_active_user)):
     """
     Get information about the current user's WebSocket connections
@@ -226,13 +225,14 @@ async def get_connection_info(current_user = Depends(get_current_active_user)):
         
     except Exception as e:
         logger.error(f"Error retrieving connection info: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve connection information."
         )
 
 
-@router.get("/api/connections/stats", status_code=status.HTTP_200_OK)
+@router.get("/connections/stats", status_code=status.HTTP_200_OK)
 async def get_connection_stats(current_user = Depends(get_current_active_user)):
     """
     Get global statistics about WebSocket connections across all instances
@@ -274,7 +274,7 @@ async def get_connection_stats(current_user = Depends(get_current_active_user)):
         )
 
 
-@router.get("/api/health", status_code=status.HTTP_200_OK)
+@router.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
     """
     Health check endpoint for load balancers and monitoring

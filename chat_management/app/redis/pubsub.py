@@ -5,7 +5,7 @@ import os
 import socket
 from typing import Dict, Any
 
-from .connection import get_redis_connection
+from ..redis.connection import get_redis_connection
 from ..ws.websocket_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,8 @@ async def start_pubsub_listener():
         
         except Exception as e:
             logger.error(f"PubSub listener error: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
             
             # Implement retry logic
             current_retry += 1
