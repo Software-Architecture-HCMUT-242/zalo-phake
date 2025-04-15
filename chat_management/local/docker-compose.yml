@@ -4,3 +4,7 @@ services:
     ports:
       - 9324:9324
       - 9325:9325
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379

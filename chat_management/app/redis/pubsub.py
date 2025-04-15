@@ -5,7 +5,7 @@ import os
 import socket
 from typing import Dict, Any
 
-from .connection import get_redis_connection
+from ..redis.connection import get_redis_connection
 from ..ws.websocket_manager import get_connection_manager
 
 logger = logging.getLogger(__name__)

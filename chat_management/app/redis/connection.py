@@ -18,7 +18,7 @@ def get_redis_config():
         'port': int(os.environ.get('REDIS_PORT', 6379)),
         'db': int(os.environ.get('REDIS_DB', 0)),
         'password': os.environ.get('REDIS_PASSWORD', None),
-        'ssl': os.environ.get('REDIS_SSL', 'false').lower() == 'true',
+        # 'ssl': os.environ.get('REDIS_SSL', 'false').lower() == 'true',
         'decode_responses': True
     }
 

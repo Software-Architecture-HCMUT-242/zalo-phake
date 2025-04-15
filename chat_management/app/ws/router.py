@@ -8,7 +8,7 @@ from app.service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore
 
-from .websocket_manager import ConnectionManager
+# ConnectionManager is now imported through get_connection_manager
 from ..dependencies import decode_token
 from ..firebase import firestore_db
 
@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 # Note: WebSocket routes don't use the usual APIRouter dependencies
 router = APIRouter()
 
-# Global connection manager (initialized in the module)
-connection_manager = ConnectionManager()
+# Get the connection manager from websocket_manager module
+from .websocket_manager import get_connection_manager
+
+# Get the global connection manager
+connection_manager = get_connection_manager()
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -116,9 +119,42 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     # Ensure connection is removed on any error
     connection_manager.disconnect(user_id, connection_id)
 
-# Export the connection manager so it can be used by other modules
-def get_connection_manager():
-  return connection_manager
+# The get_connection_manager function is now imported from websocket_manager
+
+
+async def is_conversation_participant(conversation_id: str, user_id: str) -> bool:
+  """
+  Check if a user is a participant in a given conversation
+  
+  Args:
+      conversation_id: ID of the conversation to check
+      user_id: ID of the user to check (phone number)
+  
+  Returns:
+      bool: True if the user is a participant, False otherwise
+  
+  Raises:
+      Exception: If there's an error accessing Firestore
+  """
+  try:
+    # Get the conversation document from Firestore
+    conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+    conversation = await asyncio.to_thread(conversation_ref.get)
+    
+    # Check if conversation exists
+    if not conversation.exists:
+      logger.warning(f"Conversation {conversation_id} not found when checking participation")
+      return False
+    
+    # Get the participants list and check if user is in it
+    conversation_data = conversation.to_dict()
+    participants = conversation_data.get('participants', [])
+    
+    return user_id in participants
+    
+  except Exception as e:
+    logger.error(f"Error checking conversation participation: {str(e)}")
+    raise e
 
 
 # HTTP endpoints for WebSocket-related operations

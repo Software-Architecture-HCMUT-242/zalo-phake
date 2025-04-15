@@ -2,7 +2,9 @@ import logging
 import os
 import asyncio
 
-from app.config import get_prefix
+from firebase_admin import firestore
+
+from .config import get_prefix
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,7 +13,8 @@ from .notifications.router import router as notifications_router
 from .ws.router import router as ws_router
 from .ws.api_endpoints import router as ws_api_router
 from .redis.pubsub import start_pubsub_listener
-from app.dependencies import decode_token
+from .dependencies import decode_token
+from .firebase import firestore_db
 
 # import all you need from fastapi-pagination
 
@@ -79,12 +82,12 @@ async def startup_event():
     logger.info("Started Redis PubSub listener for WebSocket message distribution")
     
     # Initialize health check document in Firestore if it doesn't exist
-    from .firebase import firestore_db
+
     health_ref = firestore_db.collection('system').document('health')
     if not health_ref.get().exists:
         health_ref.set({
             'status': 'healthy',
-            'created_at': firestore_db.SERVER_TIMESTAMP
+            'created_at': firestore.SERVER_TIMESTAMP
         })
         logger.info("Initialized health check document in Firestore")
     

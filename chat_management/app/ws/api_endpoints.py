@@ -4,16 +4,14 @@ import logging
 import os
 import socket
 import time
-from typing import Dict, Any, Optional, List
-
-from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, Field
-from firebase_admin import firestore
 
 from ..dependencies import get_current_active_user
 from ..firebase import firestore_db
 from ..redis.connection import get_redis_connection
-from .router import get_connection_manager, is_conversation_participant
+from ..ws.router import is_conversation_participant
+from ..ws.websocket_manager import get_connection_manager
+from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
