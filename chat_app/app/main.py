@@ -16,9 +16,9 @@ log(f"Start HTTP server with prefix: {PREFIX}")
 app = FastAPI(root_path=PREFIX)
 
 origins = [
-    # "http://localhost:5173",  # localhost of FE app
-    # "https://zalophake.me"  # FE domain,
-    "*"
+    "https://zalophake.me",  # FE domain,
+    "http://localhost:5173",  # localhost of FE app
+    "http://127.0.0.1:5173"
 ]
 
 app.add_middleware(
@@ -73,7 +73,7 @@ async def register(request: Request):
     # [1]: Validate FE token from firebase OTP
     # NOTE: After FE send OTP back, firebase will create a user and send this user's token back
     # this user will have empty keys like name, password, ... Only uid will be init
-    decoded_token = FirebaseDB.verify_token(vToken)
+    decoded_token = database.verify_token(vToken)
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
@@ -115,7 +115,7 @@ async def login(request: Request):
     log(f"[Debug]: Converted data:\n {vData}")
 
     # [2]: Check if user exist in Authen
-    user = FirebaseDB.query_user_by_phone_number(vRequest["phone_number"])
+    user = database.query_user_by_phone_number(vRequest["phone_number"])
     if not user:
         log(f'[Error] Phone number not found')
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
@@ -148,7 +148,7 @@ async def change_pass(request: Request):
     vError = {}
 
     # [1]: Validate FE token from firebase OTP
-    decoded_token = FirebaseDB.verify_token(vToken)
+    decoded_token = database.verify_token(vToken)
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
@@ -161,7 +161,7 @@ async def change_pass(request: Request):
     log(f"[Debug]: Converted data:\n {vData}")
 
     # [3]: Check if user's password matches old password
-    user = FirebaseDB.query_user_id(vRequest["phone_number"])
+    user = database.query_user_id(vRequest["phone_number"])
     log(f"[Debug] Queried user is: {user}")
     if not user.password == vRequest["old_password"]:
         log(f"[Error] Old password not matched")
@@ -205,11 +205,11 @@ async def profile(request: Request):
     vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
 
     # [1]: Validate FE token from firebase OTP
-    decoded_token = FirebaseDB.verify_token(vToken)
+    decoded_token = database.verify_token(vToken)
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    user = FirebaseDB.query_user_id(decoded_token["uid"])
+    user = database.query_user_id(decoded_token["uid"])
     log(f"[Debug] Queried user is: {user}")
 
     # [2]: Check if user exist in realtimeDB
