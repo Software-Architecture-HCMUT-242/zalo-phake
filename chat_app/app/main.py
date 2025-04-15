@@ -16,7 +16,6 @@ log(f"Start HTTP server with prefix: {PREFIX}")
 app = FastAPI(root_path=PREFIX)
 
 origins = [
-    "*",
     "https://zalophake.me",  # FE domain,
     "http://localhost:5173",  # localhost of FE app
     "http://127.0.0.1:5173"
@@ -24,7 +23,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
