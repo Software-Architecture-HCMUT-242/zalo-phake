@@ -193,7 +193,7 @@ async def change_pass(request: Request):
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
-    database.update(f'/User/{vRequest["phone_number"]}/password', password_hash)
+    database.update(f'/User/{vRequest["phone_number"]}/password', password_hash, response={})
     return {"success": True}
 
 
@@ -237,7 +237,7 @@ async def forgot_pass(request: Request):
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
-    database.update(f'/User/{phone_number}/password', password_hash)
+    database.update(f'/User/{phone_number}/password', password_hash, response={})
     return {"success": True}
 
 
@@ -316,6 +316,6 @@ async def update_profile(request: Request):
         raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
 
     # [4]: Update user and hashed password to DB if not existed
-    database.update(f'/User/{phone_number}/name', vRequest["name"])
-    database.update(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"])
+    database.update(f'/User/{phone_number}/name', vRequest["name"], response={})
+    database.update(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"], response={})
     return {"success": True}
