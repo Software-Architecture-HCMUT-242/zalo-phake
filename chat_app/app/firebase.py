@@ -62,7 +62,7 @@ class FirebaseDB():
     def update(self, path: str, data: typing.Any, response: typing.Optional[typing.Any]) -> bool:
         # Update data matching a path
         log(f"[Debug] Firebase update \"{data}\" to \"{path}\"")
-        if not self.query(path, response):
+        if not self.query(path, response=response):
             return False
         self.insert(path, data)
         return True
@@ -70,7 +70,7 @@ class FirebaseDB():
     def delete(self, path: str, response: typing.Optional[typing.Any]) -> bool:
         # Delete data matching a path
         log(f"[Debug] Firebase delete data at \"{path}\"")
-        if not self.query(path, response):
+        if not self.query(path, response=response):
             return False
         new_ref = db.reference(path)
         new_ref.child(response).delete()
