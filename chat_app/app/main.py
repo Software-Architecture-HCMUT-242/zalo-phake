@@ -214,6 +214,13 @@ async def forgot_pass(request: Request):
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    phone_number = {}
+    try:
+        phone_number = decoded_token.get("phone_number")
+        log(f'[Debug] Token phone number: {phone_number}')
+    except Exception as e:
+        log(f'[Error] Token get phone number failed')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [2]: Validate request body
     if not validate(vData, "new_password", str, vError, required=True):
@@ -222,7 +229,7 @@ async def forgot_pass(request: Request):
 
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
-    database.query(f'/User/{decoded_token["phone_number"]}', response=vResponse)
+    database.query(f'/User/{phone_number}', response=vResponse)
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
         log(f'[Error] User not found')
@@ -230,7 +237,7 @@ async def forgot_pass(request: Request):
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
-    database.update(f'/User/{decoded_token["phone_number"]}/password', password_hash)
+    database.update(f'/User/{phone_number}/password', password_hash)
     return {"success": True}
 
 
@@ -250,10 +257,17 @@ async def profile(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
     user = database.query_user_id(decoded_token["uid"])
     log(f"[Debug] Queried user is: {user}")
+    phone_number = {}
+    try:
+        phone_number = decoded_token.get("phone_number")
+        log(f'[Debug] Token phone number: {phone_number}')
+    except Exception as e:
+        log(f'[Error] Token get phone number failed')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [2]: Check if user exist in realtimeDB
     vResponse = {}
-    database.query(f'/User/{decoded_token["phone_number"]}', response=vResponse)
+    database.query(f'/User/{phone_number}', response=vResponse)
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
         log(f'[Error] User not found in realtime database')
@@ -278,6 +292,13 @@ async def update_profile(request: Request):
     if not decoded_token:
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    phone_number = {}
+    try:
+        phone_number = decoded_token.get("phone_number")
+        log(f'[Debug] Token phone number: {phone_number}')
+    except Exception as e:
+        log(f'[Error] Token get phone number failed')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
     # [2]: Validate request body
     if not validate(vData, "name", str, vError, required=False):
@@ -288,13 +309,13 @@ async def update_profile(request: Request):
 
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
-    database.query(f'/User/{decoded_token["phone_number"]}', response=vResponse)
+    database.query(f'/User/{phone_number}', response=vResponse)
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if vResponse["body"]:
         log(f'[Error] User already exist in realtime database: {vResponse["body"]}')
         raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
 
-    # [4]: Insert user and hashed password to DB if not existed
-    database.insert(f'/User/{decoded_token["phone_number"]}/name', vRequest["name"])
-    database.insert(f'/User/{decoded_token["phone_number"]}/profile_pic', vRequest["profile_pic"])
+    # [4]: Update user and hashed password to DB if not existed
+    database.update(f'/User/{phone_number}/name', vRequest["name"])
+    database.update(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"])
     return {"success": True}
