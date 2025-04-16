@@ -44,8 +44,8 @@
           "value": "ap-southeast-1"
         },
         {
-          "name": "SQS_URL",
-          "value": "https://sqs.ap-southeast-1.amazonaws.com/634776368936/phuoc-test-sqs"
+          "name": "AWS_SQS_QUEUE_URL",
+          "value": "https://sqs.ap-southeast-1.amazonaws.com/048283574447/zaloPhake"
         },
         {
           "name": "FIREBASE_SECRET",
