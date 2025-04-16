@@ -164,47 +164,36 @@ async def login(request: Request):
 
 @app.post("/auth/change-pass", status_code=200)
 async def change_pass(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
     vData = deepcopy(vRequest)
     vError = {}
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-
-    # [2]: Validate request body
+    # [1]: Validate request body
+    if not validate(vData, "phone_number", str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "old_password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "new_password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
 
-    # [3]: Check if user exist in realtimeDB
+    # [2]: Check if user exist in realtimeDB
     vResponse = {}
-    database.query(f'/User/{decoded_token["phone_number"]}', response=vResponse)
+    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
         log(f'[Error] User not found')
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
-    # [4]: Check if user's password matches old password
+    # [3]: Check if user's password matches old password
     password_hash = hashlib.sha256(vRequest["old_password"].encode("utf-8")).hexdigest()
     if not vResponse["body"]["password"] == password_hash:
         log(f"[Error] Old password not matched")
-        # return obscured error info to make it harder to attack
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
-    # [5]: Update user's password
-    password_hash = hash(vRequest["password"])
-    database.update(f'/User/{decoded_token["phone_number"]}/password', password_hash)
+    # [4]: Update user's password
+    password_hash = hash(vRequest["new_password"])
+    database.update(f'/User/{vRequest["phone_number"]}/password', password_hash)
     return {"success": True}
 
 
@@ -240,7 +229,7 @@ async def forgot_pass(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
 
     # [4]: Update user's password
-    password_hash = hash(vRequest["password"])
+    password_hash = hash(vRequest["new_password"])
     database.update(f'/User/{decoded_token["phone_number"]}/password', password_hash)
     return {"success": True}
 
