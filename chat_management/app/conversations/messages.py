@@ -627,7 +627,7 @@ async def mark_all_messages_as_read(
 
 
 # Add a REST API endpoint for typing indicators
-@router.post('/conversations/{conversation_id}/typing', tags=tags, operation_id="conversations_send_typing_notification")
+@router.post('/conversations/{conversation_id}/typing', tags=tags)
 async def send_typing_notification(
         conversation_id: str,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
