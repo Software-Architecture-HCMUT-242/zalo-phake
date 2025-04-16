@@ -1,12 +1,13 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-from app.phone_utils import isVietnamesePhoneNumber
+from app.phone_utils import isVietnamesePhoneNumber, convert_to_vietnamese_phone_number
 from app.service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
-from firebase_admin import firestore
+from firebase_admin import firestore, auth
+from firebase_admin.auth import ExpiredIdTokenError, RevokedIdTokenError, InvalidIdTokenError, CertificateFetchError, UserDisabledError
 
 # ConnectionManager is now imported through get_connection_manager
 from ..dependencies import decode_token
@@ -24,19 +25,91 @@ from .websocket_manager import get_connection_manager
 # Get the global connection manager
 connection_manager = get_connection_manager()
 
+async def validate_token(websocket: WebSocket) -> Optional[Dict[str, Any]]:
+  """
+  Validates the token from WebSocket query parameters
+  
+  Args:
+      websocket: The WebSocket connection
+      
+  Returns:
+      dict: Decoded token data if valid, or None if invalid
+  """
+  # Extract token from query parameters
+  token = websocket.query_params.get('token')
+  if not token:
+    logger.error("Missing authentication token")
+    return None
+    
+  # Validate token based on environment
+  if Environment.is_dev_environment():
+    logger.info(f"Development mode token validation: {token}")
+    if not isVietnamesePhoneNumber(token):
+      logger.error(f"Invalid token format in development mode: {token}")
+      return None
+    # In dev mode, the token is the phone number
+    return {
+      "phoneNumber": convert_to_vietnamese_phone_number(token), 
+      "isDisabled": False
+    }
+  
+  # Production mode - verify Firebase token
+  try:
+    decoded_token = auth.verify_id_token(token, check_revoked=True)
+    return decoded_token
+  except ValueError:
+    logger.error("Invalid token format")
+  except ExpiredIdTokenError:
+    logger.error("Token has expired")
+  except RevokedIdTokenError:
+    logger.error("Token has been revoked")
+  except InvalidIdTokenError:
+    logger.error("Invalid ID token")
+  except CertificateFetchError:
+    logger.error("Error fetching certificates")
+  except UserDisabledError:
+    logger.error("User account is disabled")
+  except Exception as e:
+    logger.error(f"Token verification error: {str(e)}")
+  
+  return None
+
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
   """
   WebSocket endpoint for real-time messaging
   """
-  # Validate phone number in development environment
-  if Environment.is_dev_environment():
-    if not isVietnamesePhoneNumber(user_id):
-      await websocket.close(code=1008, reason="Invalid phone number")
-      return
-
-  # Establish connection
-  connection_id = await connection_manager.connect(websocket, user_id)
+  # Validate token before accepting the connection
+  logger.info(f"WebSocket connection attempt from user: {user_id}")
+  decoded_token = await validate_token(websocket)
+  
+  if not decoded_token:
+    await websocket.close(code=4001, reason="Unauthorized - Invalid or missing token")
+    logger.warning(f"Rejected WebSocket connection due to invalid token for user_id: {user_id}")
+    return
+  
+  # Extract user info from token
+  token_user_id = convert_to_vietnamese_phone_number(decoded_token.get('phoneNumber'))
+  is_disabled = decoded_token.get('isDisabled', False)
+  
+  # Check if user is disabled
+  if is_disabled:
+    await websocket.close(code=4003, reason="User account is disabled")
+    logger.warning(f"Rejected WebSocket connection for disabled user: {user_id}")
+    return
+  
+  # Verify that the user_id in the path matches the user_id in the token
+  normalized_path_user_id = user_id
+  if isVietnamesePhoneNumber(user_id):
+    normalized_path_user_id = convert_to_vietnamese_phone_number(user_id)
+    
+  if normalized_path_user_id != token_user_id:
+    await websocket.close(code=4002, reason="User ID mismatch")
+    logger.warning(f"Rejected WebSocket connection due to user ID mismatch: {user_id} vs {token_user_id}")
+    return
+  
+  # Accept the connection and proceed
+  connection_id = await connection_manager.connect(websocket, token_user_id)
 
   try:
     # Process incoming messages
@@ -50,11 +123,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
           # User is typing in a conversation
           conversation_id = message.get('conversationId')
           if conversation_id:
-            await connection_manager.handle_typing_notification(conversation_id, user_id)
+            await connection_manager.handle_typing_notification(conversation_id, token_user_id)
           # Backward compatibility
           elif 'chatId' in message:
             chat_id = message.get('chatId')
-            await connection_manager.handle_typing_notification(chat_id, user_id)
+            await connection_manager.handle_typing_notification(chat_id, token_user_id)
             logger.warning(f"Deprecated 'chatId' field used instead of 'conversationId' in typing event")
 
         elif event_type == 'message_read':
@@ -62,18 +135,18 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
           conversation_id = message.get('conversationId')
           message_id = message.get('messageId')
           if conversation_id and message_id:
-            await connection_manager.handle_read_receipt(conversation_id, message_id, user_id)
+            await connection_manager.handle_read_receipt(conversation_id, message_id, token_user_id)
           # Backward compatibility
           elif 'chatId' in message and message.get('messageId'):
             chat_id = message.get('chatId')
             message_id = message.get('messageId')
-            await connection_manager.handle_read_receipt(chat_id, message_id, user_id)
+            await connection_manager.handle_read_receipt(chat_id, message_id, token_user_id)
             logger.warning(f"Deprecated 'chatId' field used instead of 'conversationId' in message_read event")
 
         elif event_type == 'heartbeat':
           # Update last active time for the user using the handle_user_activity method
           await connection_manager.handle_user_activity(
-            user_id=user_id, 
+            user_id=token_user_id, 
             activity_type='heartbeat'
           )
 
@@ -85,7 +158,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
           status = message.get('status')
           if status:
             await connection_manager.handle_user_activity(
-              user_id=user_id, 
+              user_id=token_user_id, 
               activity_type='status_change',
               metadata={'status': status}
             )
@@ -95,7 +168,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
               'status': status
             }))
           else:
-            logger.warning(f"Missing status in status_change event from user {user_id}")
+            logger.warning(f"Missing status in status_change event from user {token_user_id}")
             await websocket.send_text(json.dumps({
               'event': 'error',
               'message': 'Missing status parameter'
@@ -108,16 +181,16 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
   except WebSocketDisconnect:
     # Handle disconnection
-    all_connections_closed = connection_manager.disconnect(user_id, connection_id)
+    all_connections_closed = connection_manager.disconnect(token_user_id, connection_id)
 
     # If all user connections are closed, set offline status after grace period
     if all_connections_closed:
-      asyncio.create_task(connection_manager.set_offline_status(user_id))
+      asyncio.create_task(connection_manager.set_offline_status(token_user_id))
 
   except Exception as e:
     logger.error(f"WebSocket error: {str(e)}")
     # Ensure connection is removed on any error
-    connection_manager.disconnect(user_id, connection_id)
+    connection_manager.disconnect(token_user_id, connection_id)
 
 # The get_connection_manager function is now imported from websocket_manager
 
