@@ -122,55 +122,8 @@ async def mark_message_read(read_data: MessageRead, current_user = Depends(get_c
         )
 
 
-@router.post("/conversations/{conversation_id}/typing", status_code=status.HTTP_200_OK)
-async def send_typing_notification(conversation_id: str, current_user = Depends(get_current_active_user)):
-    """
-    Send a typing notification to a conversation
-    
-    Args:
-        conversation_id: ID of the conversation where typing is occurring
-        current_user: The authenticated user (from dependency)
-    
-    Returns:
-        Success message
-    
-    Raises:
-        HTTPException: If request is invalid or if an error occurs during processing
-    """
-    user_id = current_user.phoneNumber
-    
-    # Verify conversation exists
-    conversation_ref = firestore_db.collection('conversations').document(conversation_id)
-    conversation = await asyncio.to_thread(conversation_ref.get)
-    
-    if not conversation.exists:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found"
-        )
-    
-    # Verify user is a participant
-    participants = conversation.to_dict().get('participants', [])
-    if user_id not in participants:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not a participant in this conversation"
-        )
-    
-    try:
-        # Get the connection manager
-        connection_manager = get_connection_manager()
-        
-        # Send typing notification
-        await connection_manager.handle_typing_notification(conversation_id, user_id)
-        return {"message": "Typing notification sent"}
-    
-    except Exception as e:
-        logger.error(f"Error sending typing notification: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send typing notification. Please try again."
-        )
+# Endpoint for typing notifications has been moved to app/conversations/messages.py
+# to avoid duplicate operation IDs and consolidate functionality
 
 
 @router.get("/connections/info", status_code=status.HTTP_200_OK)

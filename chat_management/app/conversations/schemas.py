@@ -127,3 +127,37 @@ class Message(BaseModel):
     messageType: MessageType
     timestamp: datetime
     readBy: List[str]
+
+
+# Define response models for maintenance endpoints
+class ConversationUnreadDetail(BaseModel):
+    conversation_id: str
+    old_count: int
+    new_count: int
+    fixed: bool = Field(default=False, description="Whether the unread count was fixed")
+
+class RecomputeUnreadResponse(BaseModel):
+    status: str = Field(description="Status of the operation")
+    processed_conversations: int = Field(description="Number of conversations processed")
+    fixed_counts: int = Field(description="Number of conversations where unread counts were fixed")
+    details: List[ConversationUnreadDetail] = Field(default=[], description="Details for each conversation processed")
+
+class UnreadInconsistency(BaseModel):
+    conversation_id: str
+    user_id: str
+    type: str = Field(description="Type of inconsistency: 'missing_user_stats' or 'count_mismatch'")
+    stored_count: Optional[int] = Field(default=None, description="Current stored unread count")
+    actual_count: Optional[int] = Field(default=None, description="Actual unread count from message data")
+
+class RepairDetail(BaseModel):
+    conversation_id: str
+    user_id: str
+    old_count: Optional[int] = Field(default=None, description="Previous unread count")
+    new_count: int = Field(description="Updated unread count")
+    type: str = Field(description="Type of inconsistency that was fixed")
+
+class RepairUnreadResponse(BaseModel):
+    status: str = Field(description="Status of the operation")
+    total_inconsistencies: int = Field(description="Total number of inconsistencies found")
+    fixed_count: int = Field(description="Number of inconsistencies fixed")
+    details: List[RepairDetail] = Field(default=[], description="Details of each fixed inconsistency")

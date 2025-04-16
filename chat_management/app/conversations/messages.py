@@ -237,6 +237,42 @@ async def send_conversation_message(
     except Exception as e:
         logger.error(f"Error updating conversation metadata: {str(e)}")
         # Continue processing even if metadata update fails
+        
+    # Step 2.5: Update unread counts for all participants except the sender
+    try:
+        participants = conversation_data.get('participants', [])
+        sender_id = current_user.phoneNumber
+        batch = firestore_db.batch()
+        
+        # Create a batch to update all participants' unread counts atomically
+        for participant in participants:
+            if participant == sender_id:
+                continue  # Skip sender, they've already read the message
+                
+            # Get user stats reference
+            user_stats_ref = firestore_db.collection('conversations').document(conversation_id) \
+                             .collection('user_stats').document(participant)
+            
+            # Check if user stats exist first
+            user_stats = await asyncio.to_thread(user_stats_ref.get)
+            
+            if user_stats.exists:
+                # Increment existing unread count
+                current_count = user_stats.to_dict().get('unreadCount', 0)
+                batch.update(user_stats_ref, {'unreadCount': current_count + 1})
+            else:
+                # Create new user stats with unread count of 1
+                batch.set(user_stats_ref, {
+                    'unreadCount': 1,
+                    'lastReadMessageId': None
+                })
+        
+        # Commit all the unread count updates
+        await asyncio.to_thread(batch.commit)
+        logger.info(f"Updated unread counts for participants in conversation {conversation_id}")
+    except Exception as e:
+        logger.error(f"Error updating unread counts: {str(e)}")
+        # Continue processing even if unread count updates fail
     
     # Step 3: Publish to Redis Pub/Sub for real-time notifications
     try:
@@ -388,6 +424,22 @@ async def mark_message_as_read(
             
         if updated:
             logger.info(f"Message {message_id} marked as read by user {user_id}")
+            
+            # Update the unread count for the user in this conversation
+            try:
+                user_stats_ref = firestore_db.collection('conversations').document(conversation_id) \
+                                .collection('user_stats').document(user_id)
+                
+                # Get current unread count
+                user_stats = await asyncio.to_thread(user_stats_ref.get)
+                if user_stats.exists:
+                    unread_count = user_stats.to_dict().get('unreadCount', 0)
+                    if unread_count > 0:  # Ensure we don't go below zero
+                        await asyncio.to_thread(user_stats_ref.update, {'unreadCount': unread_count - 1})
+                        logger.info(f"Decremented unread count for user {user_id} in conversation {conversation_id} to {unread_count - 1}")
+            except Exception as e:
+                logger.error(f"Error updating unread count: {str(e)}")
+                # Don't fail the overall request if updating unread count fails
         else:
             logger.info(f"Message {message_id} was already read by user {user_id}")
             
@@ -440,6 +492,138 @@ async def mark_message_as_read(
             # Don't fail the request if WebSocket notification fails
 
     return {'status': 'success'}
+
+
+# Endpoint to mark all messages in a conversation as read
+@router.post('/conversations/{conversation_id}/mark_all_read', tags=tags)
+async def mark_all_messages_as_read(
+        conversation_id: str,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Mark all messages in a conversation as read by the current user
+    
+    Args:
+        conversation_id: The ID of the conversation containing the messages
+        current_user: The authenticated user making the request
+        
+    Returns:
+        dict: Success status with count of newly read messages
+        
+    Raises:
+        403: If the user is not a participant in the conversation
+        404: If the conversation doesn't exist
+        500: If there's a database or other error
+    """
+    user_id = current_user.phoneNumber
+    
+    # Verify user is part of this conversation
+    try:
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+        conversation = await asyncio.to_thread(conversation_ref.get)
+
+        if not conversation.exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+
+        conversation_data = conversation.to_dict()
+        if user_id not in conversation_data.get('participants', []):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a participant in this conversation"
+            )
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error validating conversation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to access conversation data"
+        )
+    
+    # Get all messages that the user hasn't read yet
+    try:
+        # Query messages that don't have the user in readBy array
+        messages_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages')
+        query = messages_ref.where('readBy', 'array_contains', user_id).limit(1)
+        
+        # Use a Firestore batch to update all messages at once
+        batch = firestore_db.batch()
+        message_updates = 0
+        
+        # Get all unread messages
+        unread_messages = []
+        
+        # Query in batches to avoid hitting Firestore limits
+        async def get_unread_messages():
+            nonlocal unread_messages
+            # This array query has to be inverted - we need to get all messages and filter
+            all_messages = await asyncio.to_thread(messages_ref.get)
+            
+            for msg in all_messages:
+                msg_data = msg.to_dict()
+                read_by = msg_data.get('readBy', [])
+                if user_id not in read_by:
+                    unread_messages.append((msg.id, msg_data))
+        
+        await get_unread_messages()
+        
+        # No unread messages
+        if not unread_messages:
+            # Reset unread count to ensure consistency
+            user_stats_ref = firestore_db.collection('conversations').document(conversation_id) \
+                            .collection('user_stats').document(user_id)
+            await asyncio.to_thread(user_stats_ref.update, {'unreadCount': 0})
+            return {'status': 'success', 'messagesRead': 0}
+        
+        # Update all unread messages
+        for msg_id, msg_data in unread_messages:
+            msg_ref = messages_ref.document(msg_id)
+            read_by = msg_data.get('readBy', [])
+            read_by.append(user_id)
+            batch.update(msg_ref, {'readBy': read_by})
+            message_updates += 1
+        
+        # Commit the batch
+        await asyncio.to_thread(batch.commit)
+        logger.info(f"Marked {message_updates} messages as read for user {user_id} in conversation {conversation_id}")
+        
+        # Update unread count to zero
+        user_stats_ref = firestore_db.collection('conversations').document(conversation_id) \
+                        .collection('user_stats').document(user_id)
+        await asyncio.to_thread(user_stats_ref.update, {'unreadCount': 0})
+        logger.info(f"Reset unread count to 0 for user {user_id} in conversation {conversation_id}")
+        
+        # Notify other participants
+        try:
+            redis_conn = await get_redis_connection()
+            
+            # Create bulk read receipt event
+            read_event = {
+                'event': 'conversation_read',
+                'conversationId': conversation_id,
+                'userId': user_id,
+                'count': message_updates,
+                'instanceId': os.environ.get("INSTANCE_ID", socket.gethostname())
+            }
+            
+            # Publish to Redis channel
+            channel = f"conversation:{conversation_id}"
+            await redis_conn.publish(channel, json.dumps(read_event))
+        except Exception as e:
+            logger.error(f"Error publishing bulk read receipt to Redis: {str(e)}")
+        
+        return {'status': 'success', 'messagesRead': message_updates}
+        
+    except Exception as e:
+        logger.error(f"Error marking all messages as read: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to mark all messages as read"
+        )
 
 
 # Add a REST API endpoint for typing indicators

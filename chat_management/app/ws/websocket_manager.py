@@ -209,8 +209,26 @@ class ConnectionManager:
       transaction = firestore_db.transaction()
       was_updated = update_read_status(transaction, message_ref)
       
-      # Broadcast read receipt to other participants if status was updated
+      # Update unread count if message was marked as read
       if was_updated:
+        # Update the unread count for the user in this conversation
+        try:
+          import asyncio
+          user_stats_ref = firestore_db.collection('conversations').document(conversation_id) \
+                                       .collection('user_stats').document(user_id)
+          
+          # Get current unread count
+          user_stats = await asyncio.to_thread(user_stats_ref.get)
+          if user_stats.exists:
+            unread_count = user_stats.to_dict().get('unreadCount', 0)
+            if unread_count > 0:  # Ensure we don't go below zero
+              await asyncio.to_thread(user_stats_ref.update, {'unreadCount': unread_count - 1})
+              logger.info(f"WebSocket: Decremented unread count for user {user_id} in conversation {conversation_id} to {unread_count - 1}")
+        except Exception as e:
+          logger.error(f"Error updating unread count in WebSocket handler: {str(e)}")
+          # Still continue with broadcasting the read receipt
+        
+        # Broadcast read receipt to other participants
         read_event = {
           'event': 'message_read',
           'conversationId': conversation_id,
