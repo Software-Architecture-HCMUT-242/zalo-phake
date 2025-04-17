@@ -316,6 +316,6 @@ async def update_profile(request: Request):
         raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
 
     # [4]: Update user and hashed password to DB if not existed
-    if "name" in vRequest: database.update(f'/User/{phone_number}/name', vRequest["name"], response={})
-    if "profile_pic" in vRequest: database.update(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"], response={})
+    if "name" in vRequest: database.insert(f'/User/{phone_number}/name', vRequest["name"])
+    if "profile_pic" in vRequest: database.insert(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"])
     return {"success": True}
