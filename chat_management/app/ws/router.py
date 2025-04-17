@@ -3,8 +3,8 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-from app.phone_utils import isVietnamesePhoneNumber
-from app.service_env import Environment
+from ..phone_utils import is_phone_number, format_phone_number
+from ..service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore, auth
 from firebase_admin.auth import ExpiredIdTokenError, RevokedIdTokenError, InvalidIdTokenError, CertificateFetchError, UserDisabledError
@@ -44,12 +44,12 @@ async def validate_token(websocket: WebSocket) -> Optional[Dict[str, Any]]:
   # Validate token based on environment
   if Environment.is_dev_environment():
     logger.info(f"Development mode token validation: {token}")
-    if not isVietnamesePhoneNumber(token):
+    if not is_phone_number(token):
       logger.error(f"Invalid token format in development mode: {token}")
       return None
     # In dev mode, the token is the phone number
     return {
-      "phoneNumber": token,
+      "phoneNumber": format_phone_number(token),
       "isDisabled": False
     }
   
@@ -100,8 +100,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
   
   # Verify that the user_id in the path matches the user_id in the token
   normalized_path_user_id = user_id
-  if isVietnamesePhoneNumber(user_id):
-    normalized_path_user_id = user_id
+  if is_phone_number(user_id):
+    normalized_path_user_id = format_phone_number(user_id)
     
   if normalized_path_user_id != token_user_id:
     await websocket.close(code=4002, reason="User ID mismatch")
