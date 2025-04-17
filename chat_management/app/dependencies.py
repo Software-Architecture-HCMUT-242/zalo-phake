@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated, Any
 
-from .phone_utils import isVietnamesePhoneNumber
+from .phone_utils import is_phone_number
 from .service_env import Environment
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -27,9 +27,9 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         
     if Environment.is_dev_environment():
         logger.info(f"Token: {token}")
-        if not isVietnamesePhoneNumber(token):
+        if not is_phone_number(token):
             raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
-        return dict(phoneNumber=convert_to_vietnamese_phone_number(token), isDisabled=False)
+        return dict(phoneNumber=token, isDisabled=False)
     
     try:
         return auth.verify_id_token(token, check_revoked=True)
