@@ -15,9 +15,11 @@ def convert_to_vietnamese_phone_number(number):
 
     # Check if the number is valid
     if len(number) == 10 and number.startswith(('0', '1')):
-        return number
+        return '+84' + number[1:]
     elif len(number) == 11 and number.startswith('84'):
-        return '0' + number[2:]
+        return '+84' + number[2:]
+    elif len(number) == 12 and number.startswith('+84'):
+        return '+84' + number[3:]
 
     return None
 
