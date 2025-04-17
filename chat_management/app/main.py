@@ -25,7 +25,11 @@ logging.basicConfig(
 )
 
 origins = [
-    "*"
+    "http://localhost:5173",
+    "https://zalophake.me",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000"
 ]
 
 # Print all environment variables
