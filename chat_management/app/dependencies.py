@@ -1,15 +1,12 @@
 import logging
 from typing import Annotated, Any
 
-from app.phone_utils import isVietnamesePhoneNumber
-from app.service_env import Environment
+from .phone_utils import isVietnamesePhoneNumber
+from .service_env import Environment
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from firebase_admin import auth
-
-from .config import settings
-from .phone_utils import convert_to_vietnamese_phone_number
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +55,6 @@ async def get_current_active_user(
     if decoded_token['isDisabled']:
         raise HTTPException(status_code=400, detail="Inactive user")
     return AuthenticatedUser(
-        phoneNumber=convert_to_vietnamese_phone_number(decoded_token["phoneNumber"]),
+        phoneNumber=decoded_token["phoneNumber"],
         isDiasbled=decoded_token["isDisabled"]
     )

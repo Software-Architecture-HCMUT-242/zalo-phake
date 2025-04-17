@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-from app.phone_utils import isVietnamesePhoneNumber, convert_to_vietnamese_phone_number
+from app.phone_utils import isVietnamesePhoneNumber
 from app.service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore, auth
@@ -49,7 +49,7 @@ async def validate_token(websocket: WebSocket) -> Optional[Dict[str, Any]]:
       return None
     # In dev mode, the token is the phone number
     return {
-      "phoneNumber": convert_to_vietnamese_phone_number(token), 
+      "phoneNumber": token,
       "isDisabled": False
     }
   
@@ -89,7 +89,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     return
   
   # Extract user info from token
-  token_user_id = convert_to_vietnamese_phone_number(decoded_token.get('phoneNumber'))
+  token_user_id = decoded_token.get('phoneNumber')
   is_disabled = decoded_token.get('isDisabled', False)
   
   # Check if user is disabled
@@ -101,7 +101,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
   # Verify that the user_id in the path matches the user_id in the token
   normalized_path_user_id = user_id
   if isVietnamesePhoneNumber(user_id):
-    normalized_path_user_id = convert_to_vietnamese_phone_number(user_id)
+    normalized_path_user_id = user_id
     
   if normalized_path_user_id != token_user_id:
     await websocket.close(code=4002, reason="User ID mismatch")
