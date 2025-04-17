@@ -1,0 +1,28 @@
+@startuml
+title Device Token Management Flow
+
+participant "Mobile App" as App
+participant "API Gateway" as API
+participant "Device Token Service" as TokenService
+database "Token Storage" as DB
+
+== Token Registration ==
+App -> API: Register token (POST /device-tokens)
+API -> TokenService: Process token registration
+TokenService -> DB: Check if token exists
+TokenService -> DB: Store/update token with timestamp
+TokenService -> App: Return success
+
+== Token Cleanup ==
+TokenService -> TokenService: Periodic cleanup job
+TokenService -> DB: Query tokens by last activity
+TokenService -> DB: Delete inactive tokens
+TokenService -> TokenService: Log cleanup statistics
+
+== Token Validation ==
+TokenService -> TokenService: Periodic validation job
+TokenService -> FCM: Validate tokens in batch
+FCM --> TokenService: Invalid token list
+TokenService -> DB: Remove invalid tokens
+TokenService -> TokenService: Log validation results
+@enduml

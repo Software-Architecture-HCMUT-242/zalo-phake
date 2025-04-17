@@ -1,0 +1,47 @@
+@startuml
+skinparam componentStyle rectangle
+
+package "Notification System" {
+    component "Chat Service" as ChatService
+    component "Group Service" as GroupService
+    component "User Service" as UserService
+    
+    component "Main Notification Queue" as NotificationQueue
+    component "Retry Queue" as RetryQueue
+    component "Dead Letter Queue" as DLQ
+    
+    component "Notification Consumer Service" as ConsumerService
+    component "Push Notification Service" as PushService
+    
+    database "Notification Table" as NotificationTable
+    database "User Preferences" as UserPrefsTable
+    database "Device Tokens" as TokenTable
+    
+    component "API Gateway" as API
+    component "Firebase Cloud Messaging" as FCM
+    component "Mobile/Web Clients" as Clients
+    
+    ChatService --> NotificationQueue : Publishes
+    GroupService --> NotificationQueue : Publishes
+    UserService --> NotificationQueue : Publishes
+    
+    NotificationQueue --> ConsumerService : Pulls
+    ConsumerService --> RetryQueue : Retries
+    RetryQueue --> ConsumerService : Delayed retry
+    ConsumerService --> DLQ : Failed messages
+    
+    ConsumerService --> NotificationTable : Stores
+    ConsumerService --> UserPrefsTable : Reads
+    ConsumerService --> PushService : Routes
+    
+    PushService --> TokenTable : Manages
+    PushService --> FCM : Delivers
+    
+    API --> NotificationTable : Queries
+    API --> UserPrefsTable : Updates
+    API --> TokenTable : Registers
+    
+    Clients --> API : Requests
+    FCM --> Clients : Pushes
+}
+@enduml

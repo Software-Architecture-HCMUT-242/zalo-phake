@@ -23,21 +23,26 @@ on:
         options:
           - user_task
           - chat_task
+          - notification_consumer
 
 env:
   AWS_REGION: ap-southeast-1
   ECR_REPOSITORY: software-architecture-course
   ECS_USER_SERVICE: zalo-phake-user-be-srv
   ECS_CHAT_SERVICE: zalo-phake-chat-be-srv
+  ECS_NOTI_CONSUMER_SERVICE: zalo-phake-chat-noti-srv
   ECS_CLUSTER: zalo-phake-course
   ECS_USER_TASK_DEFINITION: chat_app/deployments/task-definition.json
   FIREBASE_SECRET_CREDENTIALS: ./chat_app/app/firebase_key/zalophake.json
   ECS_CHAT_TASK_DEFINITION: chat_management/deployments/task-definition.json
+  ECS_NOTI_CONSUMER_TASK_DEFINITION: chat_management/notification_consumer/task-definition.json
   USER_DOCKERFILE: ./chat_app
   CHAT_DOCKERFILE: ./chat_management
+  NOTI_CONSUMER_DOCKERFILE: ./chat_management/notification_consumer
 
   USER_CONTAINER_NAME: zalo-phake-user-be
   CHAT_CONTAINER_NAME: zalo-phake-chat-be
+  NOTI_CONSUMER_CONTAINER_NAME: zalo-phake-notification-consumer
 
 
 jobs:
@@ -64,8 +69,9 @@ jobs:
             Please comment 'approve' along with your desired configuration:
             - For user_task: 'user_task'
             - For chat_task: 'chat_task'
+            - For notification_consumer: 'notification_consumer'
           exclude-workflow-initiator-as-approver: false
-          additional-approved-words: 'user_task, chat_task'
+          additional-approved-words: 'user_task, chat_task, notification_consumer'
 
       - name: Set ECS Configuration
         id: set_ecs_config
@@ -83,6 +89,11 @@ jobs:
               echo "ecs_task_definition=${{ env.ECS_USER_TASK_DEFINITION }}" >> $GITHUB_OUTPUT
               echo "dockerfile=${{ env.USER_DOCKERFILE }}" >> $GITHUB_OUTPUT
               echo "container_name=${{ env.USER_CONTAINER_NAME }}" >> $GITHUB_OUTPUT
+            elif [[ "${{ github.event.inputs.deployment_target }}" == "notification_consumer" ]]; then
+              echo "ecs_service=${{ env.ECS_NOTI_CONSUMER_SERVICE }}" >> $GITHUB_OUTPUT
+              echo "ecs_task_definition=${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}" >> $GITHUB_OUTPUT
+              echo "dockerfile=${{ env.NOTI_CONSUMER_DOCKERFILE }}" >> $GITHUB_OUTPUT
+              echo "container_name=${{ env.NOTI_CONSUMER_CONTAINER_NAME }}" >> $GITHUB_OUTPUT
             else
               echo "ecs_service=${{ env.ECS_CHAT_SERVICE }}" >> $GITHUB_OUTPUT
               echo "ecs_task_definition=${{ env.ECS_CHAT_TASK_DEFINITION }}" >> $GITHUB_OUTPUT
@@ -131,11 +142,24 @@ jobs:
           echo "$FIREBASE_SECRET" > ${{ env.FIREBASE_SECRET_CREDENTIALS }}
           A=$(printf '%s' "$FIREBASE_SECRET" | jq tostring)
           B="${A//\\/\\\\}"
-          sed -i "s|\"<firebase_secret>\"|$B|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
-          sed -i "s|<aws_access_key_id>|$AWS_ACCESS_KEY_ID|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
-          sed -i "s|<aws_secret_access_key>|$AWS_SECRET_ACCESS_KEY|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
-          sed -i "s|<redis_host>|$REDIS_HOST|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
-          sed -i "s|<redis_password>|$REDIS_PASSWORD|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+          
+          # Replace placeholders in the task definition based on the deployment target
+          if [[ "${{ needs.wait_for_approval.outputs.ecs_task_definition }}" == "${{ env.ECS_CHAT_TASK_DEFINITION }}" ]]; then
+            sed -i "s|\"<firebase_secret>\"|$B|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+            sed -i "s|<aws_access_key_id>|$AWS_ACCESS_KEY_ID|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+            sed -i "s|<aws_secret_access_key>|$AWS_SECRET_ACCESS_KEY|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+            sed -i "s|<redis_host>|$REDIS_HOST|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+            sed -i "s|<redis_password>|$REDIS_PASSWORD|g" ./${{ env.ECS_CHAT_TASK_DEFINITION }}
+          fi
+          
+          # Handle notification consumer task definition
+          if [[ "${{ needs.wait_for_approval.outputs.ecs_task_definition }}" == "${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}" ]]; then
+            sed -i "s|<aws_access_key_id>|$AWS_ACCESS_KEY_ID|g" ./${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}
+            sed -i "s|<aws_secret_access_key>|$AWS_SECRET_ACCESS_KEY|g" ./${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}
+            # Create firebase key directory if it doesn't exist
+            mkdir -p ./chat_management/notification_consumer/firebase_key/
+            echo "$FIREBASE_SECRET" > ./chat_management/notification_consumer/firebase_key/zalophake.json
+          fi
 
       - name: Cat firebase-credentials.json
         run: |
