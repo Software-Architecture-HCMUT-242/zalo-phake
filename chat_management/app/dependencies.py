@@ -52,9 +52,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 async def get_current_active_user(
     decoded_token: Annotated[AuthenticatedUser, Depends(decode_token)],
 ) -> AuthenticatedUser:
-    if decoded_token['isDisabled']:
-        raise HTTPException(status_code=400, detail="Inactive user")
     return AuthenticatedUser(
-        phoneNumber=format_phone_number(decoded_token["phoneNumber"]),
-        isDiasbled=decoded_token["isDisabled"]
+        phoneNumber=format_phone_number(decoded_token["phone_number"]),
+        isDiasbled=False
     )
