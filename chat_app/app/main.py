@@ -141,7 +141,7 @@ async def login(request: Request):
     user = database.query_user_by_phone_number(vRequest["phone_number"])
     if not user:
         log(f'[Error] Phone number not found')
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in Authen")
 
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
@@ -149,13 +149,13 @@ async def login(request: Request):
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
         log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
 
     # [4]: Check if password matches user
     password_hash = hash(vRequest["password"])
     if not vResponse["body"]["password"] == password_hash:
         log(f'[Error] Password not matched: \"{vResponse["body"]["password"]}\" | \"{vRequest["password"]}\"')
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+        raise HTTPException(status_code=401, detail="[Error]: Password not matched")
 
     # BE doesn't need to send token back, only need to verify FE token
     # FE refresh token is received directly from Firebase, invalid after logout
@@ -193,13 +193,13 @@ async def change_pass(request: Request):
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
         log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
 
     # [3]: Check if user's password matches old password
     password_hash = hashlib.sha256(vRequest["old_password"].encode("utf-8")).hexdigest()
     if not vResponse["body"]["password"] == password_hash:
         log(f"[Error] Old password not matched")
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+        raise HTTPException(status_code=401, detail="[Error]: Old password not matched")
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
@@ -243,7 +243,7 @@ async def forgot_pass(request: Request):
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
         log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Invalid credentials")
+        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
