@@ -117,10 +117,30 @@ async def register(request: Request):
 
 @app.post("/auth/login", status_code=200)
 async def login(request: Request):
+    vHeader = request.headers.get("Authorization")
+    if not vHeader:
+        log(f'[Error] Authorization header not found')
+        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
+    # Extract the token (assuming it's in the format 'Bearer <token>')
+    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
     vData = deepcopy(vRequest)
     vError = {}
-    # [1]: Validate request body
+
+    # [1]: Validate FE token from firebase OTP
+    decoded_token = database.verify_token(vToken)
+    if not decoded_token:
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    phone_number = {}
+    try:
+        phone_number = str(decoded_token.get("phone_number"))
+        log(f'[Debug] Token phone number: {phone_number}')
+    except Exception as e:
+        log(f'[Error] Token get phone number failed')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+
+    # [2]: Validate request body
     if not validate(vData, "phone_number", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     if not validate(vData, "password", str, vError, required=True):
@@ -136,14 +156,19 @@ async def login(request: Request):
     if not phonenumbers.is_valid_number(parsed):
         log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
         raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    
+    # [3] Check if phone number matches token
+    if not phone_number == vRequest["phone_number"]:
+        log(f'[Error] Phone number not matched token: {phone_number} | {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Phone number not matched token")
 
-    # [2]: Check if user exist in Authen
+    # [4]: Check if user exist in Authen
     user = database.query_user_by_phone_number(vRequest["phone_number"])
     if not user:
         log(f'[Error] Phone number not found')
         raise HTTPException(status_code=401, detail="[Error]: Phone number not found in Authen")
 
-    # [3]: Check if user exist in realtimeDB
+    # [5]: Check if user exist in realtimeDB
     vResponse = {}
     database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
     log(f"[Debug] The realtimeDB data is: {vResponse}")
@@ -151,7 +176,7 @@ async def login(request: Request):
         log(f'[Error] User not found')
         raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
 
-    # [4]: Check if password matches user
+    # [6]: Check if password matches user
     password_hash = hash(vRequest["password"])
     if not vResponse["body"]["password"] == password_hash:
         log(f'[Error] Password not matched: \"{vResponse["body"]["password"]}\" | \"{vRequest["password"]}\"')
