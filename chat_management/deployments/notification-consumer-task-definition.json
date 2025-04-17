@@ -1,0 +1,83 @@
+{
+  "family": "zalo-phake-notification-consumer-task",
+  "containerDefinitions": [
+    {
+      "name": "zalo-phake-notification-consumer",
+      "image": "python:3.10-slim",
+      "cpu": 128,
+      "memory": 256,
+      "essential": true,
+      "command": [
+        "python",
+        "-m",
+        "app.notification_consumer.main"
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "ap-southeast-1"
+        },
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "value": "<aws_access_key_id>"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "value": "<aws_secret_access_key>"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "ap-southeast-1"
+        },
+        {
+          "name": "SQS_URL",
+          "value": "https://sqs.ap-southeast-1.amazonaws.com/048283574447/zalo-phake-notifications"
+        },
+        {
+          "name": "SNS_TOPIC_ARN",
+          "value": "<sns_topic_arn>"
+        },
+        {
+          "name": "SQS_MESSAGE_GROUP_ID",
+          "value": "zalo-phake"
+        },
+        {
+          "name": "FIREBASE_SECRET",
+          "value": "<firebase_secret>"
+        },
+        {
+          "name": "FIREBASE_DB_URL",
+          "value": "<firebase_db_url>"
+        },
+        {
+          "name": "REDIS_HOST",
+          "value": "<redis_host>"
+        },
+        {
+          "name": "REDIS_PASSWORD",
+          "value": "<redis_password>"
+        },
+        {
+          "name": "ENVIRONMENT",
+          "value": "DEV"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/zalo-phake-notification-consumer-task",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::048283574447:role/Execution-ECS",
+  "taskRoleArn": "arn:aws:iam::048283574447:role/Notification-Consumer-Role"
+}

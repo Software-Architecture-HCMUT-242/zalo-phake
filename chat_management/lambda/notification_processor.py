@@ -1,3 +1,26 @@
+"""
+DEPRECATED: This AWS Lambda-based notification processor has been replaced by a dedicated 
+Notification Consumer Service following the redesign outlined in the 
+notification_system_redesign.md document.
+
+The new architecture provides:
+1. Better scalability - The standalone service can scale independently
+2. Improved reliability - Robust retry mechanisms and DLQ handling
+3. More efficient batching - Better performance with FCM/SNS
+4. Clearer separation of concerns - Following microservices principles
+5. Enhanced monitoring and observability
+
+See the new implementation in:
+- chat_management/app/notification_consumer/service.py
+- chat_management/app/notification_consumer/main.py
+
+Event publishing is still handled through the existing SQS utilities in:
+- chat_management/app/aws/sqs_utils.py
+"""
+
+# The original Lambda implementation is commented out below for reference
+# -----------------------------------------------------------------------------
+
 # import json
 # import logging
 # import os
