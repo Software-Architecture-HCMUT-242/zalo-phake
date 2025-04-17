@@ -3,8 +3,8 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-from ..phone_utils import is_phone_number, format_phone_number
-from ..service_env import Environment
+from app.phone_utils import is_phone_number, format_phone_number
+from app.service_env import Environment
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
 from firebase_admin import firestore, auth
 from firebase_admin.auth import ExpiredIdTokenError, RevokedIdTokenError, InvalidIdTokenError, CertificateFetchError, UserDisabledError

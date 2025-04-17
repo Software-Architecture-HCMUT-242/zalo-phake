@@ -1,8 +1,8 @@
 import logging
 from typing import Annotated, Any
 
-from .phone_utils import is_phone_number, format_phone_number
-from .service_env import Environment
+from app.phone_utils import is_phone_number, format_phone_number
+from app.service_env import Environment
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
