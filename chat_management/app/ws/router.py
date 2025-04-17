@@ -87,10 +87,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await websocket.close(code=4001, reason="Unauthorized - Invalid or missing token")
     logger.warning(f"Rejected WebSocket connection due to invalid token for user_id: {user_id}")
     return
-  
+  print(decoded_token)
   # Extract user info from token
-  token_user_id = decoded_token.get('phoneNumber')
-  is_disabled = decoded_token.get('isDisabled', False)
+  token_user_id = decoded_token.get('phone_number')
+  is_disabled = decoded_token.get('is_disabled', False)
   
   # Check if user is disabled
   if is_disabled:
