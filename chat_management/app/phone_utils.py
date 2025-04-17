@@ -1,10 +1,24 @@
 import re
+import phonenumbers
+import logging
 
-def isVietnamesePhoneNumber(number):
-    number = re.sub(r'^\+84', '0', number)  # Replace +84 with 0
-    number = re.sub(r'^84', '0', number)    # Replace 84 with 0
-    match = re.match(r"^(03|05|07|08|09|01[2|6|8|9])+([0-9]{8})$", number)
-    return bool(match)
+logger = logging.getLogger(__name__)
+
+def is_phone_number(number):
+    try:
+        parsed_phone = phonenumbers.parse(number, None)
+        if not phonenumbers.is_valid_number(parsed_phone):
+            logger.error(f"Invalid phone number: {number}")
+            return False
+        return True
+    except Exception as e:
+        print(e)
+        return False
+
+
+def format_phone_number(number):
+    parsed_phone = phonenumbers.parse(number, None)
+    return phonenumbers.format_number(parsed_phone, phonenumbers.PhoneNumberFormat.E164)
 
 def test_isVietnamesePhoneNumber():
     valid_numbers = [
@@ -15,10 +29,10 @@ def test_isVietnamesePhoneNumber():
     ]
     
     for number in valid_numbers:
-        assert isVietnamesePhoneNumber(number) == True, f"Expected True for {number}"
+        assert is_phone_number(number) == True, f"Expected True for {number}"
     
     for number in invalid_numbers:
-        assert isVietnamesePhoneNumber(number) == False, f"Expected False for {number}"
+        assert is_phone_number(number) == False, f"Expected False for {number}"
 
 if __name__ == "__main__":
     test_isVietnamesePhoneNumber()

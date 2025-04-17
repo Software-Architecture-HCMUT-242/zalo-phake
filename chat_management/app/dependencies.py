@@ -1,8 +1,8 @@
 import logging
 from typing import Annotated, Any
 
-from .phone_utils import isVietnamesePhoneNumber
-from .service_env import Environment
+from app.phone_utils import is_phone_number, format_phone_number
+from app.service_env import Environment
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -27,9 +27,9 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         
     if Environment.is_dev_environment():
         logger.info(f"Token: {token}")
-        if not isVietnamesePhoneNumber(token):
+        if not is_phone_number(token):
             raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
-        return dict(phoneNumber=convert_to_vietnamese_phone_number(token), isDisabled=False)
+        return dict(phoneNumber=format_phone_number(token), isDisabled=False)
     
     try:
         return auth.verify_id_token(token, check_revoked=True)
@@ -52,9 +52,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 async def get_current_active_user(
     decoded_token: Annotated[AuthenticatedUser, Depends(decode_token)],
 ) -> AuthenticatedUser:
-    if decoded_token['isDisabled']:
-        raise HTTPException(status_code=400, detail="Inactive user")
     return AuthenticatedUser(
-        phoneNumber=decoded_token["phoneNumber"],
-        isDiasbled=decoded_token["isDisabled"]
+        phoneNumber=format_phone_number(decoded_token["phone_number"]),
+        isDiasbled=False
     )

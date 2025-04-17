@@ -61,7 +61,7 @@
         },
         {
           "name": "ENVIRONMENT",
-          "value": "DEV"
+          "value": "PROD"
         }
       ],
       "logConfiguration": {
