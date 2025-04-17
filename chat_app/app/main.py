@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import FastAPI, HTTPException, status, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, RootModel
 from firebase import FirebaseDB
@@ -108,7 +108,7 @@ async def register(request: Request):
     database.insert(f'/User/{vRequest["phone_number"]}', {
         "password": password_hash,
         "name": vRequest["name"],
-        "profile_pic": None,
+        "profile_pic": "",
         "friends": [],
         "groups": []})
 
@@ -176,6 +176,16 @@ async def change_pass(request: Request):
     if not validate(vData, "new_password", str, vError, required=True):
         raise HTTPException(status_code=400, detail=vError["description"])
     log(f"[Debug]: Converted data:\n {vData}")
+    parsed = {}
+    try:
+        parsed = phonenumbers.parse(vRequest["phone_number"])
+        log(f'[Debug] Parsed phone number: {parsed}')
+    except Exception as e:
+        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    if not phonenumbers.is_valid_number(parsed):
+        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
 
     # [2]: Check if user exist in realtimeDB
     vResponse = {}
@@ -319,3 +329,38 @@ async def update_profile(request: Request):
     if "name" in vRequest: database.insert(f'/User/{phone_number}/name', vRequest["name"])
     if "profile_pic" in vRequest: database.insert(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"])
     return {"success": True}
+
+
+@app.post("/auth/search-phone", status_code=200)
+async def contact(request: Request):
+    vRequest = await request.json()
+    vData = deepcopy(vRequest)
+    vError = {}
+
+    # [1]: Validate request body
+    if not validate(vData, "phone_number", str, vError, required=True):
+        raise HTTPException(status_code=400, detail=vError["description"])
+    log(f"[Debug]: Converted data:\n {vData}")
+    parsed = {}
+    try:
+        parsed = phonenumbers.parse(vRequest["phone_number"])
+        log(f'[Debug] Parsed phone number: {parsed}')
+    except Exception as e:
+        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    if not phonenumbers.is_valid_number(parsed):
+        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
+        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+
+    # [2]: Check if phone number exist in realtimeDB
+    vResponse = {}
+    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
+    log(f"[Debug] The realtimeDB data is: {vResponse}")
+    if not vResponse["body"]:
+        log(f'[Error] User not found in realtime database')
+        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+
+    # [3]: Filter response keys
+    vResponseKeys = ["name", "profile_pic"]
+    response = {key: value for key, value in vResponse["body"].items() if key in vResponseKeys}
+    return {"user_data": response}
