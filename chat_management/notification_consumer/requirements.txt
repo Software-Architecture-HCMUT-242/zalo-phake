@@ -1,0 +1,7 @@
+boto3==1.34.15
+firebase-admin==6.4.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+python-json-logger==2.0.7
+tenacity==8.2.3
