@@ -11,7 +11,7 @@ The new notification system uses a decoupled, event-driven architecture with the
 1. **Event Publishers** - Service components that emit notification events
 2. **Message Queue (AWS SQS)** - Reliable, scalable message broker
 3. **Notification Consumer Service** - Dedicated microservice for processing notifications
-4. **Push Notification Service** - Abstracted service for delivering notifications via Firebase Cloud Messaging
+4. **Push Notification Service** - Abstracted service for delivering notifications via Firebase Cloud Messaging (FCM) for all clients (mobile and web)
 5. **Notification Storage** - Database layer for persisting notification history
 6. **API Layer** - RESTful endpoints for notification management
 
@@ -46,7 +46,7 @@ A dedicated microservice with the following responsibilities:
 
 An abstracted service that handles:
 - Device token management and rotation
-- Cross-platform delivery (iOS, Android, Web)
+- Cross-platform delivery for all client types (iOS, Android, Web) via Firebase Cloud Messaging
 - Batched delivery to FCM for efficiency
 - Token validation and cleanup
 

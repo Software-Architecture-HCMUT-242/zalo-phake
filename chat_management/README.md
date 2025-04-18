@@ -13,7 +13,7 @@ This project provides a scalable backend service for a chat application, support
 - **Member Administration**: Add/remove members from groups, promote/demote admin status
 - **Message Handling**: Send, retrieve, and manage messages
 - **Real-time Notifications**: Using WebSockets for real-time updates and offline notifications
-- **Notification Management**: Push notifications via Firebase Cloud Messaging and AWS SNS
+- **Notification Management**: Push notifications via Firebase Cloud Messaging (FCM)
 - **Offline Message Processing**: AWS SQS and Lambda for handling offline notifications
 - **Pagination**: Efficient data retrieval with pagination support
 - **Device Token Management**: Register and manage device tokens for push notifications
@@ -31,8 +31,7 @@ This project provides a scalable backend service for a chat application, support
 
 ### AWS Integration
 - SQS for message queueing and offline notification delivery
-- Lambda for processing notification events asynchronously
-- SNS for web push notifications
+- Dedicated notification consumer service for processing notification events
 
 ### API Layers
 1. **Router Layer**: FastAPI routes for handling HTTP requests
@@ -43,7 +42,7 @@ This project provides a scalable backend service for a chat application, support
 1. User creates a chat or sends to an existing chat
 2. Message is stored in Firestore
 3. Online users receive real-time updates via WebSockets
-4. Offline users receive notifications through SQS → Lambda → FCM/SNS
+4. Offline users receive notifications through SQS → Notification Consumer → FCM
 5. Recipients can retrieve messages with pagination
 
 ### WebSocket Flow
@@ -131,10 +130,7 @@ During development, the system uses a simplified authentication approach:
 - `AWS_ACCESS_KEY_ID`: AWS access key
 - `AWS_SECRET_ACCESS_KEY`: AWS secret key
 - `SQS_URL`: AWS SQS URL for message queueing
-- `SNS_TOPIC_ARN`: AWS SNS topic ARN for web notifications
-- `SNS_PLATFORM_APPLICATION_ARN`: AWS SNS platform application ARN
-- `LAMBDA_FUNCTION_NAME`: AWS Lambda function name for notification processing
-- `FIREBASE_SECRET`: Firebase credentials secret (JSON)
+- `FIREBASE_SECRET`: Firebase credentials secret (JSON) for FCM and Firestore access
 - `FIREBASE_DB_URL`: Firebase database URL
 
 ## Deployment

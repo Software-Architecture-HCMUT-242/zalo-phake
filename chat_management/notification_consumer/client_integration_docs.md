@@ -6,7 +6,7 @@ The Zalo-Phake notification system consists of two primary components:
 
 1. **Real-time Notifications**: WebSocket-based system that delivers immediate updates for messages, typing indicators, read receipts, and user status changes.
 
-2. **Push Notifications**: For offline users, push notifications are sent via Firebase Cloud Messaging (FCM) for mobile devices and Amazon SNS for web clients.
+2. **Push Notifications**: For offline users, push notifications are sent via Firebase Cloud Messaging (FCM) for all devices (mobile and web).
 
 This document provides comprehensive guidance for integrating client applications with the notification system.
 
@@ -346,19 +346,16 @@ fetch(`/api/v1/device-tokens/${fcmToken}`, {
 }
 ```
 
-**Web (SNS):**
+**Web (FCM):**
 ```json
 {
-  "default": "New message from John Doe",
-  "GCM": {
-    "notification": {
-      "title": "John Doe",
-      "body": "Hello there!"
-    },
-    "data": {
-      "conversationId": "7ccbca76-3f94-4a19-97cc-20079d2b9281",
-      "messageId": "fe132e45-3a58-4eed-a935-e17a279b43e3"
-    }
+  "notification": {
+    "title": "John Doe",
+    "body": "Hello there!"
+  },
+  "data": {
+    "conversationId": "7ccbca76-3f94-4a19-97cc-20079d2b9281",
+    "messageId": "fe132e45-3a58-4eed-a935-e17a279b43e3"
   }
 }
 ```
