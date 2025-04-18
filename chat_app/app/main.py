@@ -289,15 +289,20 @@ async def send_invite(request: Request):
     # [3]: Check if phone number exist in realtimeDB
     vResponse = validate_realtimeDB_user_existed(phone_number)
 
-    # [4]: Check if invited phone number exist in realtimeDB
+    # [4]: Check if invited phone number is different from host phone number
+    if vRequest["invite_phone_number"] == phone_number:
+        log(f'[Error] Invited number cannot be the same as host number: {phone_number}')
+        raise HTTPException(status_code=400, detail=f'[Error] Invited number cannot be the same as host number: {phone_number}')
+
+    # [5]: Check if invited phone number exist in realtimeDB
     vResponseInv = validate_realtimeDB_user_existed(vRequest["invite_phone_number"])
 
-    # [5]: Filter invite keys for inviting number
+    # [6]: Filter invite keys for inviting number
     vInvKeys = ["name", "profile_pic"]
     vInvite = {key: value for key, value in vResponse["body"].items() if key in vInvKeys}
     log(f"[Debug] The inviting phone_number's data is: {vInvite}")
 
-    # [6]: Update invited number's invites
+    # [7]: Update invited number's invites
     database.insert(f'/User/{vRequest["invite_phone_number"]}/invites/{phone_number}', vInvite)
     return {"success": True}
 
