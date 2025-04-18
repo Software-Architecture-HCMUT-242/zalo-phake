@@ -533,3 +533,43 @@ async def accept_invite(request: Request):
     # [8]: Update accepted number's friends
     database.insert(f'/User/{vRequest["accept_phone_number"]}/friends/{phone_number}', vUser)
     return {"success": True}
+
+
+@app.get("/auth/contacts", status_code=200)
+async def contacts(request: Request):
+    vHeader = request.headers.get("Authorization")
+    if not vHeader:
+        log(f'[Error] Authorization header not found')
+        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
+    # Extract the token (assuming it's in the format 'Bearer <token>')
+    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
+
+    # [1]: Validate FE token from firebase OTP
+    decoded_token = database.verify_token(vToken)
+    if not decoded_token:
+        log(f'[Error] OTP token not valid: {decoded_token}')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    user = database.query_user_id(decoded_token["uid"])
+    log(f"[Debug] Queried user is: {user}")
+    phone_number = {}
+    try:
+        phone_number = str(decoded_token.get("phone_number"))
+        log(f'[Debug] Token phone number: {phone_number}')
+    except Exception as e:
+        log(f'[Error] Token get phone number failed')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+
+    # [2]: Check if user exist in realtimeDB
+    vResponse = {}
+    database.query(f'/User/{phone_number}', response=vResponse)
+    log(f"[Debug] The realtimeDB data is: {vResponse}")
+    if not vResponse["body"]:
+        log(f'[Error] User not found in realtime database')
+        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+
+    # [3]: Check if user realtimeDB has contacts (friends)
+    if "friends" not in vResponse["body"]:
+        log(f'[Debug] User {phone_number} has no key \"friends\"')
+        return {"contacts": {}}
+
+    return {"contacts": vResponse["body"]['friends']}
