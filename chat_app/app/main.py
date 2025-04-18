@@ -143,30 +143,22 @@ async def register(request: Request):
 async def login(request: Request):
     vRequest = await request.json()
 
-    # [1]: Validate FE header token from firebase OTP
-    decoded_token, phone_number = validate_header(request=request)
-
-    # [2]: Validate request body
+    # [1]: Validate request body
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "password", str, required=True)
     log(f'[Debug] Validate the phone number: {vRequest["phone_number"]}')
     validate_phone_str(vRequest["phone_number"])
     
-    # [3] Check if phone number matches token
-    if not phone_number == vRequest["phone_number"]:
-        log(f'[Error] Phone number not matched token: {phone_number} | {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Phone number not matched token")
-
-    # [4]: Check if user exist in Authen
+    # [2]: Check if user exist in Authen
     user = database.query_user_by_phone_number(vRequest["phone_number"])
     if not user:
         log(f'[Error] Phone number not found')
         raise HTTPException(status_code=401, detail="[Error]: Phone number not found in Authen")
 
-    # [5]: Check if user exist in realtimeDB
+    # [3]: Check if user exist in realtimeDB
     vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
-    # [6]: Check if password matches user
+    # [4]: Check if password matches user
     password_hash = hash(vRequest["password"])
     if not vResponse["body"]["password"] == password_hash:
         log(f'[Error] Password not matched: \"{vResponse["body"]["password"]}\" | \"{vRequest["password"]}\"')
