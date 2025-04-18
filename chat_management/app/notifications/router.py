@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from firebase_admin import firestore
 
 from .schemas import Notification, NotificationPreference, DeviceToken
+from .service import NotificationService
 from ..dependencies import get_current_active_user, AuthenticatedUser
 from ..firebase import firestore_db
 from ..pagination import common_pagination_parameters, PaginatedResponse, PaginationParams
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 tags = ["Notifications"]
+notification_service = NotificationService()
 
 @router.get('/notifications', response_model=PaginatedResponse[Notification], tags=tags)
 async def get_notifications(

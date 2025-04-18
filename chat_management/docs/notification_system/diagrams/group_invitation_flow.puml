@@ -1,0 +1,25 @@
+@startuml
+title Group Invitation Notification Flow
+
+participant "Group Service" as Group
+participant "SQS" as SQS
+participant "Notification Consumer" as Consumer
+participant "User Preference Service" as Prefs
+participant "Push Notification Service" as Push
+participant "Firebase Cloud Messaging" as FCM
+database "Notification Storage" as DB
+
+Group -> Group: Group invitation created
+Group -> SQS: Publish invitation event
+SQS -> Consumer: Consumer polls message
+Consumer -> Prefs: Check invitee preferences
+Consumer -> Consumer: Apply notification rules
+Consumer -> DB: Store invitation notification
+Consumer -> Push: Send to push service
+Push -> Push: Prepare notification payload
+Push -> FCM: Send push notification
+FCM --> Push: Delivery response
+Push -> DB: Update delivery status
+Push -> Consumer: Return delivery result
+Consumer -> SQS: Delete message from queue
+@enduml

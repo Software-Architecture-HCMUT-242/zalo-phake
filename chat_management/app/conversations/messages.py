@@ -312,7 +312,7 @@ async def send_conversation_message(
             logger.error(f"Error broadcasting message via WebSocket fallback: {str(ws_error)}")
             # Don't fail the API request if WebSocket delivery fails - we'll still process offline notifications
     
-    # Step 4: Send offline push notifications via SQS/Lambda if needed
+    # Step 4: Send offline push notifications via SQS/Notification Consumer
     participants = conversation_data.get('participants', [])
     # Run this in a background task to not block the API response
     asyncio.create_task(
@@ -753,7 +753,7 @@ async def process_offline_notifications(conversation_id: str, message_id: str, s
                                         participants: List[str]):
     """
     Process offline notifications for a message
-    This function handles SQS queue sending for offline users who aren't connected via WebSocket
+    This function sends notifications to the SQS queue for handling by the notification consumer service
     
     Args:
         conversation_id: The ID of the conversation
@@ -798,18 +798,27 @@ async def process_offline_notifications(conversation_id: str, message_id: str, s
             # Continue with all participants if we can't check Redis
             # We'll remove the sender at least
             participants = [p for p in participants if p != sender_id]
+        
+        # Prepare notification data for the queue with the standardized format
+        # expected by the notification consumer service
+        notification_data = {
+            'event': 'new_message',
+            'eventType': 'new_message',  # Explicit event type field
+            'conversationId': conversation_id,
+            'messageId': message_id,
+            'eventId': message_id,  # Include eventId for consumer compatibility
+            'senderId': sender_id,
+            'content': content,
+            'messageType': message_type,
+            'timestamp': timestamp.isoformat(),
+            'participants': participants
+        }
             
         # Try SQS if available
         if is_sqs_available():
             try:
-                notification_sent = await send_chat_message_notification(
-                    chat_id=conversation_id,
-                    message_id=message_id,
-                    sender_id=sender_id,
-                    content=content,
-                    message_type=message_type,
-                    participants=participants
-                )
+                # Send to the notification queue using the notification service
+                notification_sent = await notification_service.send_message_to_queue(notification_data)
 
                 if notification_sent:
                     logger.info(f"Notification for message {message_id} sent to SQS queue for {len(participants)} recipients")
@@ -823,18 +832,6 @@ async def process_offline_notifications(conversation_id: str, message_id: str, s
         if not notification_sent:
             logger.info("Using direct notification processing as fallback")
             try:
-                # Prepare message for direct notification processing
-                notification_data = {
-                    'event': 'new_message',
-                    'conversationId': conversation_id,
-                    'messageId': message_id,
-                    'senderId': sender_id,
-                    'content': content,
-                    'messageType': message_type,
-                    'timestamp': timestamp.isoformat(),
-                    'participants': participants
-                }
-
                 # Process notification directly
                 await notification_service.process_new_message(notification_data)
                 logger.info(f"Processed direct notifications for {len(participants)} recipients")

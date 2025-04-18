@@ -1,0 +1,25 @@
+@startuml
+title Friend Request Notification Flow
+
+participant "User Service" as User
+participant "SQS" as SQS
+participant "Notification Consumer" as Consumer
+participant "User Preference Service" as Prefs
+participant "Push Notification Service" as Push
+participant "Firebase Cloud Messaging" as FCM
+database "Notification Storage" as DB
+
+User -> User: Friend request created
+User -> SQS: Publish friend request event
+SQS -> Consumer: Consumer polls message
+Consumer -> Prefs: Check recipient preferences
+Consumer -> Consumer: Apply notification rules
+Consumer -> DB: Store friend request notification
+Consumer -> Push: Send to push service
+Push -> Push: Prepare notification payload
+Push -> FCM: Send push notification
+FCM --> Push: Delivery response
+Push -> DB: Update delivery status
+Push -> Consumer: Return delivery result
+Consumer -> SQS: Delete message from queue
+@enduml

@@ -20,9 +20,7 @@ class AWSConfig(BaseSettings):
     aws_sqs_message_group_id: str = os.environ.get('SQS_MESSAGE_GROUP_ID', 'zalo-phake')
     aws_sqs_max_message_size: int = int(os.environ.get('SQS_MAX_MESSAGE_SIZE', '256000'))  # 256KB
 
-    # SNS Configuration
-    aws_sns_topic_arn: str = os.environ.get('SNS_TOPIC_ARN', '')
-    aws_sns_platform_application_arn: str = os.environ.get('SNS_PLATFORM_APPLICATION_ARN', '')
+    # Push Notification Configuration is now handled by the notification_consumer service using Firebase Cloud Messaging (FCM) only
 
     # Lambda Configuration
     aws_lambda_function_name: str = os.environ.get('LAMBDA_FUNCTION_NAME', 'zalo-phake-notification-processor')
@@ -37,8 +35,7 @@ class AWSConfig(BaseSettings):
         if not self.aws_sqs_queue_url:
             logger.warning("SQS queue URL is not set. SQS features will be disabled.")
 
-        if not self.aws_sns_topic_arn and os.environ.get('ENVIRONMENT') == 'PROD':
-            logger.warning("SNS topic ARN is not set. Web push notifications will be disabled in production.")
+        # SNS has been replaced with Firebase Cloud Messaging (FCM) for all push notifications
 
         # Load credentials from environment if not set
         if not self.aws_access_key_id and 'AWS_ACCESS_KEY_ID' in os.environ:

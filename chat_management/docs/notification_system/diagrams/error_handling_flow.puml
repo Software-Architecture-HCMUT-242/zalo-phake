@@ -1,0 +1,29 @@
+@startuml
+title Error Handling and Retry Flow
+
+participant "SQS Main Queue" as SQS
+participant "Notification Consumer" as Consumer
+participant "SQS Retry Queue" as RetryQ
+participant "SQS Dead Letter Queue" as DLQ
+participant "Push Notification Service" as Push
+participant "Firebase Cloud Messaging" as FCM
+database "Notification Storage" as DB
+
+SQS -> Consumer: Consumer polls message
+Consumer -> Push: Send to push service
+Push -> FCM: Attempt delivery
+FCM --> Push: Error response
+Push -> Consumer: Return failure
+
+alt Transient Error
+    Consumer -> DB: Update notification status (retrying)
+    Consumer -> RetryQ: Send to retry queue with delay
+    RetryQ -> Consumer: Retry after delay
+else Permanent Error
+    Consumer -> DB: Update notification status (failed)
+    Consumer -> DLQ: Send to Dead Letter Queue
+    Consumer -> Consumer: Log detailed error
+end
+
+Consumer -> SQS: Delete message from main queue
+@enduml

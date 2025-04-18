@@ -1,0 +1,25 @@
+@startuml
+title New Message Notification Flow
+
+participant "Chat Service" as Chat
+participant "SQS" as SQS
+participant "Notification Consumer" as Consumer
+participant "User Preference Service" as Prefs
+participant "Push Notification Service" as Push
+participant "Firebase Cloud Messaging" as FCM
+database "Notification Storage" as DB
+
+Chat -> Chat: New message created
+Chat -> SQS: Publish message event
+SQS -> Consumer: Consumer polls message
+Consumer -> Prefs: Check recipient preferences
+Consumer -> Consumer: Apply notification rules
+Consumer -> DB: Store notification record
+Consumer -> Push: Send to push service
+Push -> Push: Batch notifications
+Push -> FCM: Send push notifications
+FCM --> Push: Delivery response
+Push -> DB: Update delivery status
+Push -> Consumer: Return delivery result
+Consumer -> SQS: Delete message from queue
+@enduml
