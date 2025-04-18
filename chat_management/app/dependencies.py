@@ -29,7 +29,7 @@ async def decode_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         logger.info(f"Token: {token}")
         if not is_phone_number(token):
             raise HTTPException(status_code=401, detail="Not a valid Vietnamese phone number")
-        return dict(phoneNumber=format_phone_number(token), isDisabled=False)
+        return dict(phone_number=format_phone_number(token), is_disabled=False)
     
     try:
         return auth.verify_id_token(token, check_revoked=True)

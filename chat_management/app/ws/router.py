@@ -49,8 +49,8 @@ async def validate_token(websocket: WebSocket) -> Optional[Dict[str, Any]]:
       return None
     # In dev mode, the token is the phone number
     return {
-      "phoneNumber": format_phone_number(token),
-      "isDisabled": False
+      "phone_number": format_phone_number(token),
+      "is_disabled": False
     }
   
   # Production mode - verify Firebase token
