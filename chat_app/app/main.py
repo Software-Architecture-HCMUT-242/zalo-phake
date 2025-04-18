@@ -115,7 +115,7 @@ async def register(request: Request):
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "name", str, required=True)
     validate_request_body(vRequest, "password", str, required=True)
-    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    log(f'[Debug] Validate the phone number: {vRequest["phone_number"]}')
     validate_phone_str(vRequest["phone_number"])
 
     # [3]: Check if user exist in realtimeDB
@@ -148,7 +148,7 @@ async def login(request: Request):
     # [2]: Validate request body
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "password", str, required=True)
-    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    log(f'[Debug] Validate the phone number: {vRequest["phone_number"]}')
     validate_phone_str(vRequest["phone_number"])
     
     # [3] Check if phone number matches token
@@ -184,7 +184,7 @@ async def change_pass(request: Request):
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "old_password", str, required=True)
     validate_request_body(vRequest, "new_password", str, required=True)
-    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    log(f'[Debug] Validate the phone number: {vRequest["phone_number"]}')
     validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if user exist in realtimeDB
@@ -262,7 +262,7 @@ async def contact(request: Request):
 
     # [1]: Validate request body
     validate_request_body(vRequest, "phone_number", str, required=True)
-    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    log(f'[Debug] Validate the phone number: {vRequest["phone_number"]}')
     validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if phone number exist in realtimeDB
@@ -283,7 +283,7 @@ async def send_invite(request: Request):
 
     # [2]: Validate request body
     validate_request_body(vRequest, "invite_phone_number", str, required=True)
-    log(f"[Debug] Validate the invited phone number: {vRequest["invite_phone_number"]}")
+    log(f'[Debug] Validate the invited phone number: {vRequest["invite_phone_number"]}')
     validate_phone_str(vRequest["invite_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
@@ -311,7 +311,7 @@ async def accept_invite(request: Request):
 
     # [2]: Validate request body
     validate_request_body(vRequest, "accept_phone_number", str, required=True)
-    log(f"[Debug] Validate the accepted phone number: {vRequest["accept_phone_number"]}")
+    log(f'[Debug] Validate the accepted phone number: {vRequest["accept_phone_number"]}')
     validate_phone_str(vRequest["accept_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
@@ -323,7 +323,7 @@ async def accept_invite(request: Request):
         raise HTTPException(status_code=404, detail=f"Invites not found in realtime database")
     if vRequest["accept_phone_number"] not in vResponse["body"]["invites"]:
         log(f'[Error] Invite for {vRequest["accept_phone_number"]} not found in realtime database')
-        raise HTTPException(status_code=404, detail=f"Invite for {vRequest["accept_phone_number"]} not found in realtime database")
+        raise HTTPException(status_code=404, detail=f'Invite for {vRequest["accept_phone_number"]} not found in realtime database')
 
     # [5]: Check if accepted phone number exist in realtimeDB
     vResponseAcc = validate_realtimeDB_user_existed(vRequest["accept_phone_number"])
