@@ -97,6 +97,7 @@ def validate_phone_str(phone_number_str):
 
 def validate_realtimeDB_user_existed(user):
     vResponse = {}
+    # Query user from realtime DB and check if data existed
     database.query(f'/User/{user}', response=vResponse)
     log(f"[Debug] The realtimeDB data is: {vResponse}")
     if not vResponse["body"]:
@@ -344,6 +345,10 @@ async def accept_invite(request: Request):
 
     # [8]: Update accepted number's friends
     database.insert(f'/User/{vRequest["accept_phone_number"]}/friends/{phone_number}', vUser)
+
+    # [9]: Remove accepted invitation from host
+    vRep = {}
+    database.delete(f'/User/{phone_number}/invites/{vRequest["accept_phone_number"]}', response=vRep)
     return {"success": True}
 
 
