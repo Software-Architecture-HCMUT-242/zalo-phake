@@ -156,9 +156,7 @@ jobs:
           if [[ "${{ needs.wait_for_approval.outputs.ecs_task_definition }}" == "${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}" ]]; then
             sed -i "s|<aws_access_key_id>|$AWS_ACCESS_KEY_ID|g" ./${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}
             sed -i "s|<aws_secret_access_key>|$AWS_SECRET_ACCESS_KEY|g" ./${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}
-            # Create firebase key directory if it doesn't exist
-            mkdir -p ./chat_management/notification_consumer/firebase_key/
-            echo "$FIREBASE_SECRET" > ./chat_management/notification_consumer/firebase_key/zalophake.json
+            sed -i "s|\"<firebase_secret>\"|$B|g" ./${{ env.ECS_NOTI_CONSUMER_TASK_DEFINITION }}
           fi
 
       - name: Cat firebase-credentials.json
