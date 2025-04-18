@@ -80,6 +80,20 @@ def validate_header(request):
 
     return decoded_token, phone_number
 
+def validate_phone_str(phone_number_str):
+    parsed  = {}
+    # [1]: Try parsing the phone string
+    try:
+        parsed = phonenumbers.parse(phone_number_str)
+        log(f'[Debug] Parsed phone number: {parsed}')
+    except Exception as e:
+        log(f'[Error] Parse phone number failed: {phone_number_str}')
+        raise HTTPException(status_code=400, detail=f"[Error]: Can't parse phone number: {phone_number_str}")
+    # [2]: Check if the parsed phone string is a valid phone number
+    if not phonenumbers.is_valid_number(parsed):
+        log(f'[Error] Invalid phone number: {phone_number_str}')
+        raise HTTPException(status_code=400, detail=f"[Error]: Invalid phone number: {phone_number_str}")
+    return
 
 @app.post("/auth/register", status_code=201)
 async def register(request: Request):
@@ -92,16 +106,8 @@ async def register(request: Request):
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "name", str, required=True)
     validate_request_body(vRequest, "password", str, required=True)
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
 
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
@@ -117,8 +123,8 @@ async def register(request: Request):
         "password": password_hash,
         "name": vRequest["name"],
         "profile_pic": "",
-        "friends": [],
-        "groups": []})
+        "friends": {},
+        "groups": {}})
 
     return {"success": True}
 
@@ -133,16 +139,8 @@ async def login(request: Request):
     # [2]: Validate request body
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "password", str, required=True)
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
     
     # [3] Check if phone number matches token
     if not phone_number == vRequest["phone_number"]:
@@ -182,16 +180,8 @@ async def change_pass(request: Request):
     validate_request_body(vRequest, "phone_number", str, required=True)
     validate_request_body(vRequest, "old_password", str, required=True)
     validate_request_body(vRequest, "new_password", str, required=True)
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if user exist in realtimeDB
     vResponse = {}
@@ -287,16 +277,8 @@ async def contact(request: Request):
 
     # [1]: Validate request body
     validate_request_body(vRequest, "phone_number", str, required=True)
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if phone number exist in realtimeDB
     vResponse = {}
@@ -321,16 +303,8 @@ async def send_invite(request: Request):
 
     # [2]: Validate request body
     validate_request_body(vRequest, "invite_phone_number", str, required=True)
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["invite_phone_number"])
-        log(f'[Debug] Parsed invited phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse invited phone number failed: {vRequest["invite_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse invited phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid invited phone number: {vRequest["invite_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid invited phone number")
+    log(f"[Debug] Validate the invited phone number: {vRequest["invite_phone_number"]}")
+    validate_phone_str(vRequest["invite_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
     vResponse = {}
@@ -367,16 +341,8 @@ async def accept_invite(request: Request):
 
     # [2]: Validate request body
     validate_request_body(vRequest, "accept_phone_number", str, required=True)
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["accept_phone_number"])
-        log(f'[Debug] Parsed accepted phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse accepted phone number failed: {vRequest["accept_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse accepted phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid accepted phone number: {vRequest["accept_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid accepted phone number")
+    log(f"[Debug] Validate the accepted phone number: {vRequest["accept_phone_number"]}")
+    validate_phone_str(vRequest["accept_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
     vResponse = {}
@@ -387,10 +353,10 @@ async def accept_invite(request: Request):
         raise HTTPException(status_code=404, detail="[Error]: User not found in database")
 
     # [4]: Check if accepted phone number exist in this user's invites
-    vResponse = {}
-    database.query(f'/User/{phone_number}/invites/{vRequest["accept_phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
+    if "invites" not in vResponse["body"]:
+        log(f'[Error] Invites not found in realtime database')
+        raise HTTPException(status_code=404, detail=f"Invites not found in realtime database")
+    if vRequest["accept_phone_number"] not in vResponse["body"]["invites"]:
         log(f'[Error] Invite for {vRequest["accept_phone_number"]} not found in realtime database')
         raise HTTPException(status_code=404, detail=f"Invite for {vRequest["accept_phone_number"]} not found in realtime database")
 
