@@ -40,33 +40,26 @@ def ping():
 def hash(phone_number):
     return hashlib.sha256(phone_number.encode("utf-8")).hexdigest()
 
-def validate(body, key, type_origin, error, required=False):
+def validate_request_body(body, key, type_origin, required=False):
     # [1]: Check if body has key
     if (key not in body) and required:
-        error["description"] = f"[Error] Can't find key \"{key}\""
-        log(error["description"])
-        return False
+        log(f"[Error] Can't find key \"{key}\"")
+        raise HTTPException(status_code=400, detail=f"[Error] Can't find key \"{key}\"")
 
     # [2]: Check type of request value
     if not isinstance(body[key], type_origin):
-        error["description"] = f"[Error] Key \"{key}\" is not of type {type_origin}"
-        log(error["description"])
-        return False
+        log(f"[Error] Key \"{key}\" is not of type {type_origin}")
+        raise HTTPException(status_code=400, detail=f"[Error] Key \"{key}\" is not of type {type_origin}")
 
-    return True
+    return
 
-
-@app.post("/auth/register", status_code=201)
-async def register(request: Request):
+def validate_header(request):
     vHeader = request.headers.get("Authorization")
     if not vHeader:
         log(f'[Error] Authorization header not found')
         raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
     # Extract the token (assuming it's in the format 'Bearer <token>')
     vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
-    vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE token from firebase OTP
     # NOTE: After FE send OTP back, firebase will create a user and send this user's token back
@@ -76,24 +69,54 @@ async def register(request: Request):
         log(f'[Error] OTP token not valid: {decoded_token}')
         raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
-    # [2]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "name", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-    parsed = {}
+    # [2]: Check if the token has phone number
+    phone_number = {}
     try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
+        phone_number = str(decoded_token.get("phone_number"))
+        log(f'[Debug] Token phone number: {phone_number}')
+    except Exception as e:
+        log(f'[Error] Token get phone number failed')
+        raise HTTPException(status_code=401, detail="[Error]: OTP token get phone number failed")
+
+    return decoded_token, phone_number
+
+def validate_phone_str(phone_number_str):
+    parsed  = {}
+    # [1]: Try parsing the phone string
+    try:
+        parsed = phonenumbers.parse(phone_number_str)
         log(f'[Debug] Parsed phone number: {parsed}')
     except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
+        log(f'[Error] Parse phone number failed: {phone_number_str}')
+        raise HTTPException(status_code=400, detail=f"[Error]: Can't parse phone number: {phone_number_str}")
+    # [2]: Check if the parsed phone string is a valid phone number
     if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+        log(f'[Error] Invalid phone number: {phone_number_str}')
+        raise HTTPException(status_code=400, detail=f"[Error]: Invalid phone number: {phone_number_str}")
+    return
+
+def validate_realtimeDB_user_existed(user):
+    vResponse = {}
+    database.query(f'/User/{user}', response=vResponse)
+    log(f"[Debug] The realtimeDB data is: {vResponse}")
+    if not vResponse["body"]:
+        log(f'[Error] Phone number {user} not found in realtimeDB')
+        raise HTTPException(status_code=401, detail=f"[Error]: Phone number {user} not found in realtimeDB")
+    return vResponse
+
+@app.post("/auth/register", status_code=201)
+async def register(request: Request):
+    vRequest = await request.json()
+
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
+
+    # [2]: Validate request body
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    validate_request_body(vRequest, "name", str, required=True)
+    validate_request_body(vRequest, "password", str, required=True)
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
 
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
@@ -109,53 +132,24 @@ async def register(request: Request):
         "password": password_hash,
         "name": vRequest["name"],
         "profile_pic": "",
-        "friends": [],
-        "groups": []})
+        "friends": {},
+        "groups": {}})
 
     return {"success": True}
 
 
 @app.post("/auth/login", status_code=200)
 async def login(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    validate_request_body(vRequest, "password", str, required=True)
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
     
     # [3] Check if phone number matches token
     if not phone_number == vRequest["phone_number"]:
@@ -169,12 +163,7 @@ async def login(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: Phone number not found in Authen")
 
     # [5]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
+    vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
     # [6]: Check if password matches user
     password_hash = hash(vRequest["password"])
@@ -190,35 +179,16 @@ async def login(request: Request):
 @app.post("/auth/change-pass", status_code=200)
 async def change_pass(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "old_password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "new_password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    validate_request_body(vRequest, "old_password", str, required=True)
+    validate_request_body(vRequest, "new_password", str, required=True)
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
+    vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
     # [3]: Check if user's password matches old password
     password_hash = hashlib.sha256(vRequest["old_password"].encode("utf-8")).hexdigest()
@@ -234,41 +204,16 @@ async def change_pass(request: Request):
 
 @app.post("/auth/forgot-pass", status_code=200)
 async def forgot_pass(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "new_password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-
+    validate_request_body(vRequest, "new_password", str, required=True)
+    
     # [3]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
@@ -278,79 +223,34 @@ async def forgot_pass(request: Request):
 
 @app.get("/auth/profile", status_code=200)
 async def profile(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [2]: Query user in Authen
     user = database.query_user_id(decoded_token["uid"])
     log(f"[Debug] Queried user is: {user}")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
 
-    # [2]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    # [3]: Check if user exist in realtimeDB
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     return {"user": user, "user_data": vResponse["body"]}
 
+
 @app.post("/auth/update-profile", status_code=200)
 async def update_profile(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "name", str, vError, required=False):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "profile_pic", str, vError, required=False):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "name", str, required=False)
+    validate_request_body(vRequest, "profile_pic", str, required=False)
 
     # [3]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if vResponse["body"]:
-        log(f'[Error] User already exist in realtime database: {vResponse["body"]}')
-        raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
-    # [4]: Update user and hashed password to DB if not existed
+    # [4]: Update user and hashed password to DB
     if "name" in vRequest: database.insert(f'/User/{phone_number}/name', vRequest["name"])
     if "profile_pic" in vRequest: database.insert(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"])
     return {"success": True}
@@ -359,31 +259,14 @@ async def update_profile(request: Request):
 @app.post("/auth/search-phone", status_code=200)
 async def contact(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["phone_number"])
-        log(f'[Debug] Parsed phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse phone number failed: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid phone number: {vRequest["phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid phone number")
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    log(f"[Debug] Validate the phone number: {vRequest["phone_number"]}")
+    validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if phone number exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
     # [3]: Filter response keys
     vResponseKeys = ["name", "profile_pic"]
@@ -393,59 +276,21 @@ async def contact(request: Request):
 
 @app.post("/auth/send-invite", status_code=200)
 async def send_invite(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "invite_phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["invite_phone_number"])
-        log(f'[Debug] Parsed invited phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse invited phone number failed: {vRequest["invite_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse invited phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid invited phone number: {vRequest["invite_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid invited phone number")
+    validate_request_body(vRequest, "invite_phone_number", str, required=True)
+    log(f"[Debug] Validate the invited phone number: {vRequest["invite_phone_number"]}")
+    validate_phone_str(vRequest["invite_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [4]: Check if invited phone number exist in realtimeDB
-    vResponseInv = {}
-    database.query(f'/User/{vRequest["invite_phone_number"]}', response=vResponseInv)
-    log(f"[Debug] The realtimeDB data is: {vResponseInv}")
-    if not vResponseInv["body"]:
-        log(f'[Error] Invited phone number not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: Invited phone number not found in database")
+    vResponseInv = validate_realtimeDB_user_existed(vRequest["invite_phone_number"])
 
     # [5]: Filter invite keys for inviting number
     vInvKeys = ["name", "profile_pic"]
@@ -459,67 +304,29 @@ async def send_invite(request: Request):
 
 @app.post("/auth/accept-invite", status_code=200)
 async def accept_invite(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "accept_phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-    parsed = {}
-    try:
-        parsed = phonenumbers.parse(vRequest["accept_phone_number"])
-        log(f'[Debug] Parsed accepted phone number: {parsed}')
-    except Exception as e:
-        log(f'[Error] Parse accepted phone number failed: {vRequest["accept_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Can't parse accepted phone number")
-    if not phonenumbers.is_valid_number(parsed):
-        log(f'[Error] Invalid accepted phone number: {vRequest["accept_phone_number"]}')
-        raise HTTPException(status_code=400, detail="[Error]: Invalid accepted phone number")
+    validate_request_body(vRequest, "accept_phone_number", str, required=True)
+    log(f"[Debug] Validate the accepted phone number: {vRequest["accept_phone_number"]}")
+    validate_phone_str(vRequest["accept_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [4]: Check if accepted phone number exist in this user's invites
-    vResponse = {}
-    database.query(f'/User/{phone_number}/invites/{vRequest["accept_phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
+    if "invites" not in vResponse["body"]:
+        log(f'[Error] Invites not found in realtime database')
+        raise HTTPException(status_code=404, detail=f"Invites not found in realtime database")
+    if vRequest["accept_phone_number"] not in vResponse["body"]["invites"]:
         log(f'[Error] Invite for {vRequest["accept_phone_number"]} not found in realtime database')
         raise HTTPException(status_code=404, detail=f"Invite for {vRequest["accept_phone_number"]} not found in realtime database")
 
     # [5]: Check if accepted phone number exist in realtimeDB
-    vResponseAcc = {}
-    database.query(f'/User/{vRequest["accept_phone_number"]}', response=vResponseAcc)
-    log(f"[Debug] The realtimeDB data is: {vResponseAcc}")
-    if not vResponseAcc["body"]:
-        log(f'[Error] Accepted phone number not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: Accepted phone number not found in database")
+    vResponseAcc = validate_realtimeDB_user_existed(vRequest["accept_phone_number"])
 
     # [6]: Filter keys for both users
     vUserKeys = ["name", "profile_pic"]
@@ -537,35 +344,11 @@ async def accept_invite(request: Request):
 
 @app.get("/auth/contacts", status_code=200)
 async def contacts(request: Request):
-    vHeader = request.headers.get("Authorization")
-    if not vHeader:
-        log(f'[Error] Authorization header not found')
-        raise HTTPException(status_code=400, detail="[Error]: Authorization header not found")
-    # Extract the token (assuming it's in the format 'Bearer <token>')
-    vToken = vHeader.split(" ")[1] if "Bearer" in vHeader else vHeader
-
-    # [1]: Validate FE token from firebase OTP
-    decoded_token = database.verify_token(vToken)
-    if not decoded_token:
-        log(f'[Error] OTP token not valid: {decoded_token}')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
-    user = database.query_user_id(decoded_token["uid"])
-    log(f"[Debug] Queried user is: {user}")
-    phone_number = {}
-    try:
-        phone_number = str(decoded_token.get("phone_number"))
-        log(f'[Debug] Token phone number: {phone_number}')
-    except Exception as e:
-        log(f'[Error] Token get phone number failed')
-        raise HTTPException(status_code=401, detail="[Error]: OTP token not valid")
+    # [1]: Validate FE header token from firebase OTP
+    decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [3]: Check if user realtimeDB has contacts (friends)
     if "friends" not in vResponse["body"]:
