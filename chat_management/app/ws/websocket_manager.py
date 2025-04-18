@@ -47,10 +47,25 @@ class ConnectionManager:
     # Update user status to online in Firestore
     try:
       user_ref = firestore_db.collection('users').document(user_id)
-      user_ref.update({
-        'isOnline': True,
-        'lastActive': firestore.SERVER_TIMESTAMP
-      })
+      
+      # Check if user document exists
+      user_doc = user_ref.get()
+      if not user_doc.exists:
+        # Create user document if it doesn't exist
+        user_ref.set({
+          'phoneNumber': user_id,
+          'isOnline': True,
+          'lastActive': firestore.SERVER_TIMESTAMP,
+          'createdAt': firestore.SERVER_TIMESTAMP
+        })
+        logger.info(f"Created new user document for {user_id}")
+      else:
+        # Update existing user document
+        user_ref.update({
+          'isOnline': True,
+          'lastActive': firestore.SERVER_TIMESTAMP
+        })
+      
       logger.info(f"User {user_id} connected with connection ID {connection_id}")
     except Exception as e:
       logger.error(f"Error updating online status: {str(e)}")
@@ -85,10 +100,25 @@ class ConnectionManager:
       # Check if the user still has no connections
       if user_id not in self.active_connections:
         user_ref = firestore_db.collection('users').document(user_id)
-        user_ref.update({
-          'isOnline': False,
-          'lastActive': firestore.SERVER_TIMESTAMP
-        })
+        
+        # Check if user document exists
+        user_doc = user_ref.get()
+        if not user_doc.exists:
+          # Create user document if it doesn't exist
+          user_ref.set({
+            'phoneNumber': user_id,
+            'isOnline': False,
+            'lastActive': firestore.SERVER_TIMESTAMP,
+            'createdAt': firestore.SERVER_TIMESTAMP
+          })
+          logger.info(f"Created new user document for {user_id} with offline status")
+        else:
+          # Update existing user document
+          user_ref.update({
+            'isOnline': False,
+            'lastActive': firestore.SERVER_TIMESTAMP
+          })
+          
         logger.info(f"User {user_id} status set to offline after grace period")
     except Exception as e:
       logger.error(f"Error updating offline status: {str(e)}")
@@ -292,8 +322,12 @@ class ConnectionManager:
     logger.info(f"Handling user activity: {activity_type} for user {user_id}")
     
     try:
-      # Update user activity timestamp in Firestore
+      # Get user reference from Firestore
       user_ref = firestore_db.collection('users').document(user_id)
+      
+      # Check if user document exists
+      user_doc = await asyncio.to_thread(user_ref.get)
+      
       update_data = {
         'lastActive': firestore.SERVER_TIMESTAMP,
         'lastActivityType': activity_type
@@ -303,8 +337,20 @@ class ConnectionManager:
       if activity_type == 'status_change' and 'status' in metadata:
         update_data['status'] = metadata['status']
       
-      # Update in Firestore
-      await asyncio.to_thread(user_ref.update, update_data)
+      # Create or update user document
+      if not user_doc.exists:
+        # Create new user document with activity data
+        create_data = {
+          'phoneNumber': user_id,
+          'isOnline': True,
+          'createdAt': firestore.SERVER_TIMESTAMP,
+          **update_data
+        }
+        await asyncio.to_thread(user_ref.set, create_data)
+        logger.info(f"Created new user document for {user_id} during activity handling")
+      else:
+        # Update existing user
+        await asyncio.to_thread(user_ref.update, update_data)
       
       # If this is a status change, broadcast to relevant conversations
       if activity_type == 'status_change' and 'status' in metadata:
