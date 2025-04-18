@@ -1,10 +1,13 @@
 import json
 import os
-import typing
 
 import firebase_admin
+import google.cloud.firestore
 from firebase_admin import credentials, db, firestore
+import logging
 
+
+logger = logging.getLogger(__name__)
 
 class FirebaseDB:
     _instance = None
@@ -18,7 +21,7 @@ class FirebaseDB:
     def __init__(self):
         if self.initialized:
             return
-        print("FirebaseDB.__init__() called")
+        logger.info("FirebaseDB.__init__() called")
         # Dir to key
         # should fix this to use GOOGLE_APPLICATION_CREDENTIALS env https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -27,17 +30,17 @@ class FirebaseDB:
         self.db_url = "https://zalophake-bf746-default-rtdb.firebaseio.com/"
         self.root_path = "/"
         self.app = None
-        self.ref = None
+        self.db = None
         self.firestore_db = None
         self.connect()
         self.initialized = True
         return
 
-    def get_realtime_db(self) -> db.Reference:
+    def get_realtime_db(self) -> db:
         # Return a reference to the root path
-        return self.ref
+        return self.db
     
-    def get_firestore_db(self) -> firebase_admin.db:
+    def get_firestore_db(self) -> google.cloud.firestore.Client:
         # Return a reference to the Firebase client
         return self.firestore_db
 
@@ -57,9 +60,7 @@ class FirebaseDB:
             options={"databaseURL": self.db_url},
         )
         self.firestore_db = firestore.client(self.app)
+        self.db = db
 
-        # Get references to DB parent nodes
-        self.ref = db.reference(self.root_path)
-        print(self.app.name)
-        print("Connected to Firebase Realtime Database")
+        logger.info(f"Connected to Firebase Realtime Database. App name: {self.app.name}")
         return

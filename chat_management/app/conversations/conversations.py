@@ -18,7 +18,7 @@ from ..pagination import common_pagination_parameters, PaginationParams, Paginat
 from ..time_utils import convert_timestamps
 
 from ..dependencies import decode_token
-
+from ..users.users_db import get_user_info
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,31 @@ router = APIRouter(
     dependencies=[Depends(decode_token)],
 )
 tags = ["Conversations"]
+
+def get_conversation_name(conversation_data, user_phone_num):
+    """
+    Helper function to get the conversation name based on the type and participants.
+    """
+    match conversation_data.get('type'):
+        case 'group':
+            return conversation_data.get('name', '')
+        case 'direct':
+            participants = conversation_data.get('participants', [])
+            # Filter out current user to get the other participant
+            other_participants = [p for p in participants if p != user_phone_num]
+            name = conversation_data.get('name', '')
+            if not name:
+                name = other_participants[0] # Fallback to ID if no name is found
+                other_participant_info = get_user_info(other_participants[0])
+                other_participant_name = other_participant_info.get('name', '')
+                if other_participant_name:
+                    return other_participant_name  # Use other participant's ID as name
+
+            return name
+        case _:
+            logger.warning(f"Unknown conversation type: {conversation_data.get('type')}")
+            return ''  # Default case, should not happen if type is validated before
+
 
 @router.get('/conversations', response_model=PaginatedResponse[Conversation], tags=tags)
 async def get_conversations(
@@ -88,13 +113,7 @@ async def get_conversations(
             conv_type = ConversationType.GROUP if conv_data.get('type') == 'group' else ConversationType.DIRECT
 
             # For direct chats, set the name to the other participant's name/number
-            name = conv_data.get('name', '')
-            if conv_type == ConversationType.DIRECT:
-                participants = conv_data.get('participants', [])
-                # Filter out current user to get the other participant
-                other_participants = [p for p in participants if p != user_phone_num]
-                if other_participants:
-                    name = other_participants[0]  # Use other participant's ID as name
+            name = get_conversation_name(conv_data, user_phone_num)
 
             # Get last message preview
             last_message = None
