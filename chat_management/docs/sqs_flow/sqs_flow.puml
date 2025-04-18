@@ -1,66 +1,106 @@
-@startuml SQS Flow with Python Consumer for Offline Notification
+@startuml SQS Notification Flow (No Lambda)
 
-actor "User A" as UserA
-participant "API Instance B (FastAPI)" as InstB
-queue "AWS SQS Queue" as SQS
-participant "Python Consumer Service" as Consumer
-participant "Firestore" as FS
-participant "Push Notification Service (FCM/SNS)" as PNS
-actor "User B's Device (Offline)" as UserBDevice
+!theme vibrant
 
-UserA -> InstB : POST /conversations/{conv_id}/messages
-activate InstB
+actor "API Service" as API
+queue "SQS Main Queue" as MainQueue
+queue "SQS Retry Queue" as RetryQueue
+queue "SQS DLQ" as DLQ
+participant "Notification Consumer Service" as Consumer
+database "Firebase" as Firebase
 
-InstB -> FS : Save Message Data
-activate FS
-FS --> InstB : Message Saved
-deactivate FS
+activate API
+API -> MainQueue : Publish Notification Event\n(e.g., new_message)
+deactivate API
 
-InstB -> SQS : Send Notification Task (msg details)
-note right: Uses sqs_utils.py logic \n[cite: chat_management/app/conversations/messages.py, chat_management/app/aws/sqs_utils.py]
-activate SQS
-SQS --> InstB : Task Queued
-
-note right of InstB
-  Instance B also publishes
-  event to Redis Pub/Sub
-  (See New Message diagram)
-end note
-deactivate InstB
-
-
-... Later ...
-
-Consumer -> SQS : Poll/Receive Message
 activate Consumer
-SQS --> Consumer : Notification Task (with ReceiptHandle)
+loop Processing Loop
+    Consumer -> MainQueue : Receive Messages
+    activate MainQueue
 
-Consumer -> FS : Get User B Status & Device Tokens
-note right: Adapts logic from lambda/notification_processor.py \n[cite: chat_management/lambda/notification_processor.py]
-activate FS
-FS --> Consumer : User B is Offline, Tokens: [...]
-deactivate FS
+    alt Messages Received
+        MainQueue --> Consumer : Notification Event(s)
+        deactivate MainQueue
 
-Consumer -> PNS : Send Push Notification (Payload, Tokens)
-note right: Adapts logic from notification_processor.py / service.py \n[cite: chat_management/lambda/notification_processor.py, chat_management/app/notifications/service.py]
-activate PNS
-PNS --> Consumer : Notification Sent
-deactivate PNS
+        loop For Each Message
+            Consumer -> Firebase : Get User Preferences/Tokens
+            activate Firebase
+            Firebase --> Consumer : Preferences/Tokens
+            deactivate Firebase
 
-PNS --> UserBDevice : Push Notification Delivered
-activate UserBDevice
-UserBDevice --> UserBDevice : Display Notification
-deactivate UserBDevice
+            alt User is Offline & Prefs Enabled
+                Consumer -> Firebase : Send FCM Notification
+                activate Firebase
+                Firebase --> Consumer : FCM Result
+                deactivate Firebase
 
-Consumer -> FS : Store Notification Record
-activate FS
-FS --> Consumer : Record Stored
-deactivate FS
+                Consumer -> Firebase : Store Notification History
+                activate Firebase
+                Firebase --> Consumer : Store Result
+                deactivate Firebase
+            else User Online or Prefs Disabled
+                 Consumer -> Consumer: Skip Push Notification
+            end
 
-Consumer -> SQS : Delete Message (using ReceiptHandle)
-note right: Uses client.py logic \n[cite: chat_management/app/aws/client.py]
-SQS --> Consumer : Message Deleted
-deactivate SQS
+            alt Processing Successful
+                Consumer -> MainQueue : Delete Message
+                activate MainQueue
+                MainQueue --> Consumer : Delete Confirmation
+                deactivate MainQueue
+            else Processing Failed (Transient Error)
+                Consumer -> RetryQueue : Send Message (with delay)
+                activate RetryQueue
+                RetryQueue --> Consumer : Send Confirmation
+                deactivate RetryQueue
+                Consumer -> MainQueue : Delete Message
+                activate MainQueue
+                MainQueue --> Consumer : Delete Confirmation
+                deactivate MainQueue
+            else Processing Failed (Permanent Error / Max Retries Reached)
+                Consumer -> DLQ : Send Message
+                activate DLQ
+                DLQ --> Consumer : Send Confirmation
+                deactivate DLQ
+                 alt Message came from Retry Queue
+                      Consumer -> RetryQueue : Delete Message
+                      activate RetryQueue
+                      RetryQueue --> Consumer : Delete Confirmation
+                      deactivate RetryQueue
+                 else Message came from Main Queue
+                      Consumer -> MainQueue : Delete Message
+                      activate MainQueue
+                      MainQueue --> Consumer : Delete Confirmation
+                      deactivate MainQueue
+                 end
+            end
+        end
+    else No Messages in Main Queue
+        MainQueue --> Consumer : No Messages
+        deactivate MainQueue
+
+        ' Try processing retry queue
+        Consumer -> RetryQueue : Receive Messages
+        activate RetryQueue
+        alt Messages Received from Retry Queue
+            RetryQueue --> Consumer : Notification Event(s) for Retry
+            deactivate RetryQueue
+            ' Process retry messages (similar logic as above but targets RetryQueue for deletion/DLQ)
+            note right of Consumer
+                Processing logic for retried messages:
+                - Attempt processing again.
+                - On success, delete from RetryQueue.
+                - On transient failure (before max retries), resend to RetryQueue with increased delay, delete from RetryQueue.
+                - On permanent failure or max retries, send to DLQ, delete from RetryQueue.
+            end note
+
+        else No Messages in Retry Queue
+            RetryQueue --> Consumer : No Messages
+            deactivate RetryQueue
+            Consumer -> Consumer : Wait briefly
+        end
+    end
+end
+
 deactivate Consumer
 
 @enduml
