@@ -40,20 +40,18 @@ def ping():
 def hash(phone_number):
     return hashlib.sha256(phone_number.encode("utf-8")).hexdigest()
 
-def validate(body, key, type_origin, error, required=False):
+def validate_request_body(body, key, type_origin, required=False):
     # [1]: Check if body has key
     if (key not in body) and required:
-        error["description"] = f"[Error] Can't find key \"{key}\""
-        log(error["description"])
-        return False
+        log(f"[Error] Can't find key \"{key}\"")
+        raise HTTPException(status_code=400, detail=f"[Error] Can't find key \"{key}\"")
 
     # [2]: Check type of request value
     if not isinstance(body[key], type_origin):
-        error["description"] = f"[Error] Key \"{key}\" is not of type {type_origin}"
-        log(error["description"])
-        return False
+        log(f"[Error] Key \"{key}\" is not of type {type_origin}")
+        raise HTTPException(status_code=400, detail=f"[Error] Key \"{key}\" is not of type {type_origin}")
 
-    return True
+    return
 
 def validate_header(request):
     vHeader = request.headers.get("Authorization")
@@ -86,20 +84,14 @@ def validate_header(request):
 @app.post("/auth/register", status_code=201)
 async def register(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE header token from firebase OTP
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "name", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    validate_request_body(vRequest, "name", str, required=True)
+    validate_request_body(vRequest, "password", str, required=True)
     parsed = {}
     try:
         parsed = phonenumbers.parse(vRequest["phone_number"])
@@ -134,18 +126,13 @@ async def register(request: Request):
 @app.post("/auth/login", status_code=200)
 async def login(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE header token from firebase OTP
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    validate_request_body(vRequest, "password", str, required=True)
     parsed = {}
     try:
         parsed = phonenumbers.parse(vRequest["phone_number"])
@@ -190,17 +177,11 @@ async def login(request: Request):
 @app.post("/auth/change-pass", status_code=200)
 async def change_pass(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "old_password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "new_password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "phone_number", str, required=True)
+    validate_request_body(vRequest, "old_password", str, required=True)
+    validate_request_body(vRequest, "new_password", str, required=True)
     parsed = {}
     try:
         parsed = phonenumbers.parse(vRequest["phone_number"])
@@ -235,17 +216,13 @@ async def change_pass(request: Request):
 @app.post("/auth/forgot-pass", status_code=200)
 async def forgot_pass(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE header token from firebase OTP
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "new_password", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
-
+    validate_request_body(vRequest, "new_password", str, required=True)
+    
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
     database.query(f'/User/{phone_number}', response=vResponse)
@@ -282,18 +259,13 @@ async def profile(request: Request):
 @app.post("/auth/update-profile", status_code=200)
 async def update_profile(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE header token from firebase OTP
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "name", str, vError, required=False):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    if not validate(vData, "profile_pic", str, vError, required=False):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "name", str, required=False)
+    validate_request_body(vRequest, "profile_pic", str, required=False)
 
     # [3]: Check if user exist in realtimeDB
     vResponse = {}
@@ -312,13 +284,9 @@ async def update_profile(request: Request):
 @app.post("/auth/search-phone", status_code=200)
 async def contact(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate request body
-    if not validate(vData, "phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "phone_number", str, required=True)
     parsed = {}
     try:
         parsed = phonenumbers.parse(vRequest["phone_number"])
@@ -347,16 +315,12 @@ async def contact(request: Request):
 @app.post("/auth/send-invite", status_code=200)
 async def send_invite(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE header token from firebase OTP
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "invite_phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "invite_phone_number", str, required=True)
     parsed = {}
     try:
         parsed = phonenumbers.parse(vRequest["invite_phone_number"])
@@ -397,16 +361,12 @@ async def send_invite(request: Request):
 @app.post("/auth/accept-invite", status_code=200)
 async def accept_invite(request: Request):
     vRequest = await request.json()
-    vData = deepcopy(vRequest)
-    vError = {}
 
     # [1]: Validate FE header token from firebase OTP
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Validate request body
-    if not validate(vData, "accept_phone_number", str, vError, required=True):
-        raise HTTPException(status_code=400, detail=vError["description"])
-    log(f"[Debug]: Converted data:\n {vData}")
+    validate_request_body(vRequest, "accept_phone_number", str, required=True)
     parsed = {}
     try:
         parsed = phonenumbers.parse(vRequest["accept_phone_number"])
