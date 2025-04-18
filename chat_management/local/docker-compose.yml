@@ -2,9 +2,12 @@ services:
   aws-sqs:
     image: softwaremill/elasticmq
     ports:
-      - 9324:9324
-      - 9325:9325
+      - "9324:9324"
+      - "9325:9325"
   redis:
     image: redis:latest
     ports:
-      - 6379:6379
+      - "6379:6379"
+    command:
+      - redis-server
+      - --bind 0.0.0.0

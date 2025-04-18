@@ -134,39 +134,54 @@ async def start_pubsub_listener():
     retry_delay = 5  # seconds
     current_retry = 0
     
+    # Default channel subscriptions (all conversation channels)
+    DEFAULT_CHANNEL = "conversation:*"
+    
     while True:
         try:
             redis_conn = await get_redis_connection()
             pubsub = redis_conn.pubsub()
             
-            # Subscribe to all channels relevant to this instance
-            # In production, you would have a mechanism to register subscriptions
-            # when users connect. For now, using a simple approach.
+            # Register this instance with Redis
             instance_channels_key = f"subscriptions:{instance_id}"
             
+            # Get existing channel subscriptions
             channels = await redis_conn.smembers(instance_channels_key)
-            if not channels:
-                logger.warning(f"No channels found for instance {instance_id}. Will check again in 5 seconds.")
-                await asyncio.sleep(5)
-                continue
             
-            await pubsub.subscribe(*channels)
-            logger.info(f"PubSub listener started for instance {instance_id} with {len(channels)} channels")
+            # If no channels found, subscribe to the default pattern
+            if not channels:
+                logger.info(f"No specific channels found for instance {instance_id}. Using pattern subscription to {DEFAULT_CHANNEL}")
+                # Use pattern subscribe for wildcard support
+                await pubsub.psubscribe(DEFAULT_CHANNEL)
+                # Add the default channel to instance subscriptions
+                await redis_conn.sadd(instance_channels_key, DEFAULT_CHANNEL)
+            else:
+                # Subscribe to specific channels
+                for channel in channels:
+                    if '*' in channel:
+                        await pubsub.psubscribe(channel)
+                    else:
+                        await pubsub.subscribe(channel)
+                
+            logger.info(f"PubSub listener started for instance {instance_id} with {len(channels) or 1} channel patterns")
             
             # Reset retry counter on successful connection
             current_retry = 0
             
             # Listen for messages
             async for message in pubsub.listen():
-                if message['type'] != 'message':
+                if message['type'] not in ('message', 'pmessage'):
                     continue
                 
                 try:
                     channel = message['channel']
                     data = json.loads(message['data'])
                     
-                    # Extract event type and call the appropriate handler
+                    # Log message receipt
                     event_type = data.get('event')
+                    logger.debug(f"Received {event_type} event on channel {channel}")
+                    
+                    # Extract event type and call the appropriate handler
                     if event_type in event_handlers:
                         await event_handlers[event_type](data, connection_manager)
                     else:
