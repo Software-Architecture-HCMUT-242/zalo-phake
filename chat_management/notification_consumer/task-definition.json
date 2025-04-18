@@ -60,7 +60,6 @@
           "name": "AWS_DEFAULT_REGION",
           "value": "ap-southeast-1"
         },
-        ,
         {
           "name": "FIREBASE_SECRET",
           "value": "<firebase_secret>"
