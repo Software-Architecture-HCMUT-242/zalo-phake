@@ -38,11 +38,11 @@
         },
         {
           "name": "RETRY_QUEUE_URL",
-          "value": "https://sqs.ap-southeast-1.amazonaws.com/ACCOUNT_ID/zalo-phake-notifications-retry"
+          "value": "https://sqs.ap-southeast-1.amazonaws.com/048283574447/zalo-phake-noti-retry"
         },
         {
           "name": "DLQ_URL",
-          "value": "https://sqs.ap-southeast-1.amazonaws.com/ACCOUNT_ID/zalo-phake-notifications-dlq"
+          "value": "https://sqs.ap-southeast-1.amazonaws.com/048283574447/zalo-phake-noti-dlq"
         },
         {
           "name": "AWS_REGION",
