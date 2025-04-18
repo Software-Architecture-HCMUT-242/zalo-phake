@@ -1,4 +1,4 @@
-from chat_management.app.firebase import realtime_db
+from ..firebase import realtime_db
 
 DB_USER_PATH = "/User/"
 
