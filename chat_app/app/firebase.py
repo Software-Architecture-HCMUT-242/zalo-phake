@@ -67,13 +67,13 @@ class FirebaseDB():
         self.insert(path, data)
         return True
 
-    def delete(self, path: str, child_key: str, response: typing.Optional[typing.Any]) -> bool:
+    def delete(self, path: str, response: typing.Optional[typing.Any]) -> bool:
         # Delete data matching a path
-        log(f"[Debug] Firebase delete data at \"{path}\", child key \"{child_key}\"")
+        log(f"[Debug] Firebase delete data at \"{path}\"")
         if not self.query(path, response=response):
             return False
         new_ref = db.reference(path)
-        new_ref.child(child_key).delete()
+        new_ref.delete()
         return True
     
     def create_user(self, *args, **kwargs):

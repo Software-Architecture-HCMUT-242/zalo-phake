@@ -346,7 +346,7 @@ async def accept_invite(request: Request):
 
     # [10]: Remove accepted invitation from host
     vRep = {}
-    database.delete(f'/User/{phone_number}/invites',f'{vRequest["accept_phone_number"]}', response=vRep)
+    database.delete(f'/User/{phone_number}/invites/{vRequest["accept_phone_number"]}', response=vRep)
     return {"success": True}
 
 
