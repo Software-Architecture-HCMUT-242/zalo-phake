@@ -1,73 +1,95 @@
+import asyncio
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Dict, List, Optional, Any
 
-import boto3
-from firebase_admin import messaging
-from firebase_admin.exceptions import FirebaseError
-
-from ..aws import sqs_client
+from ..aws import sqs_utils
 from ..aws.config import settings
 from ..firebase import firestore_db
+from .schemas import NotificationEvent, NotificationRecipient, DeliveryChannel, NotificationType
 
 logger = logging.getLogger(__name__)
+
 
 class NotificationService:
     def __init__(self):
         """
-        Initialize the notification service with SNS client for push notifications
+        Initialize the notification service
         """
-        self.sns = boto3.client(
-            'sns',
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key
-        )
         logger.info("NotificationService initialized")
 
-    async def send_message_to_queue(self, message_data):
+    async def send_notification_event(self, event_type: str, payload: Dict[str, Any],
+                                      recipients: List[str], delivery_channels: List[str] = None) -> bool:
         """
-        Send a message to the SQS queue for asynchronous processing
+        Create and send a standardized notification event to SQS queue
+
+        Args:
+            event_type: Type of notification event (new_message, group_invitation, etc.)
+            payload: Event payload data
+            recipients: List of recipient user IDs
+            delivery_channels: List of delivery channels (defaults to both PUSH and IN_APP)
+
+        Returns:
+            bool: True if event was successfully sent to SQS, False otherwise
         """
         try:
-            # Validate required fields based on event type
-            event_type = message_data.get('event')
-            
-            if event_type == 'new_message':
-                required_fields = ['event', 'conversationId', 'messageId', 'senderId', 'content']
-            elif event_type == 'group_invitation':
-                required_fields = ['event', 'conversationId', 'senderId', 'inviteeId']
-            elif event_type == 'friend_request':
-                required_fields = ['event', 'senderId', 'recipientId']
-            else:
-                required_fields = ['event']
-            
-            for field in required_fields:
-                if field not in message_data:
-                    logger.error(f"Missing required field: {field} in message data")
-                    return False
+            # Set default delivery channels if none provided
+            if delivery_channels is None:
+                delivery_channels = [DeliveryChannel.PUSH, DeliveryChannel.IN_APP]
 
-            # Make timestamp serializable if it's a datetime object
-            if 'timestamp' in message_data and isinstance(message_data['timestamp'], datetime):
-                message_data['timestamp'] = message_data['timestamp'].isoformat()
+            # Generate event ID if not already in payload
+            event_id = payload.get('messageId', str(uuid.uuid4()))
+            if 'eventId' not in payload:
+                payload['eventId'] = event_id
 
-            # Send to SQS
-            response = sqs_client.send_message(
-                queue_url=settings.aws_sqs_queue_url,
-                message_body=message_data
+            # Format recipients according to the standardized schema
+            recipient_objects = [
+                NotificationRecipient(
+                    userId=user_id,
+                    deliveryChannels=delivery_channels
+                ) for user_id in recipients
+            ]
+
+            # Create standardized notification event
+            notification_event = NotificationEvent(
+                eventId=event_id,
+                eventType=event_type,
+                timestamp=datetime.now(timezone.utc),
+                payload=payload,
+                recipients=recipient_objects
             )
 
-            logger.info(f"Message sent to SQS queue. MessageId: {response.get('MessageId')}")
+            # Convert to dictionary for sending to SQS
+            event_dict = notification_event.model_dump()
+
+            # Use asyncio.create_task to avoid blocking
+            task = asyncio.create_task(
+                sqs_utils.send_to_sqs(
+                    event_type=event_type,
+                    payload=event_dict
+                )
+            )
+
+            # Log the event
+            logger.info(f"Sent {event_type} notification event to SQS queue: {event_id}")
+
             return True
+
         except Exception as e:
-            logger.error(f"Error sending message to SQS queue: {str(e)}")
+            logger.error(f"Error sending notification event to SQS: {str(e)}")
             return False
 
-    async def process_new_message(self, message_data):
+    async def process_new_message(self, message_data: Dict[str, Any]) -> bool:
         """
-        Process a new chat message and send notifications to offline users
-        This might be called directly or by a worker processing SQS messages
+        Process a new chat message notification
+
+        Args:
+            message_data: Message data dictionary
+
+        Returns:
+            bool: True if notification was successfully processed
         """
         try:
             # Extract necessary data from the payload
@@ -77,7 +99,7 @@ class NotificationService:
             content = message_data.get('content')
             participants = message_data.get('participants', [])
 
-            if not (conversation_id and message_id and sender_id and content and participants):
+            if not all([conversation_id, message_id, sender_id, content, participants]):
                 logger.error(f"Invalid message data: {message_data}")
                 return False
 
@@ -89,8 +111,6 @@ class NotificationService:
                 logger.error(f"Conversation {conversation_id} not found")
                 return False
 
-            conversation_data = conversation.to_dict()
-
             # Get sender name
             sender_ref = firestore_db.collection('users').document(sender_id)
             sender = sender_ref.get()
@@ -99,72 +119,74 @@ class NotificationService:
                 sender_data = sender.to_dict()
                 sender_name = sender_data.get('name', sender_id)
 
-            # Send notifications to all participants except sender
-            notification_tasks = []
-            for participant_id in participants:
-                if participant_id == sender_id:
-                    continue
+            # Create payload for notification event
+            payload = {
+                'conversationId': conversation_id,
+                'messageId': message_id,
+                'senderId': sender_id,
+                'senderName': sender_name,
+                'content': content,
+                'contentType': message_data.get('messageType', 'text')
+            }
 
-                # Check if user is online (has active WebSocket connection)
-                user_ref = firestore_db.collection('users').document(participant_id)
-                user = user_ref.get()
+            # Determine recipients (all participants except sender)
+            recipients = [p for p in participants if p != sender_id]
 
-                if not user.exists:
-                    continue
+            if not recipients:
+                logger.info(f"No recipients to notify for message {message_id}")
+                return True
 
-                user_data = user.to_dict()
-                is_online = user_data.get('isOnline', False)
+            # Send notification event to SQS queue
+            event_sent = await self.send_notification_event(
+                event_type='new_message',
+                payload=payload,
+                recipients=recipients
+            )
 
-                # If user is offline, send push notification
-                if not is_online:
-                    # Check notification preferences
-                    should_send_push = await self._check_notification_preferences(participant_id, 'message')
+            # Store notifications in Firestore for each recipient
+            storage_tasks = []
+            for recipient_id in recipients:
+                storage_tasks.append(self._store_notification(
+                    recipient_id,
+                    'message',
+                    sender_name,
+                    content[:100] + ('...' if len(content) > 100 else ''),
+                    {
+                        'conversationId': conversation_id,
+                        'messageId': message_id,
+                        'senderId': sender_id
+                    }
+                ))
 
-                    if should_send_push:
-                        notification_tasks.append(self._send_push_notification(
-                            participant_id,
-                            sender_name,
-                            content[:100] + ('...' if len(content) > 100 else ''),
-                            conversation_id,
-                            message_id
-                        ))
-
-                    # Store notification in Firestore regardless of push settings
-                    self._store_notification(
-                        participant_id,
-                        'message',
-                        sender_name,
-                        content,
-                        {
-                            'conversationId': conversation_id,
-                            'messageId': message_id,
-                            'senderId': sender_id
-                        }
-                    )
-
-            # Execute all notification tasks
-            for task in notification_tasks:
+            # Wait for all storage tasks to complete
+            for task in storage_tasks:
                 await task
 
-            return True
+            return event_sent
 
         except Exception as e:
             logger.error(f"Error processing new message notification: {str(e)}")
             return False
 
-    async def process_group_invitation(self, message_data):
+    async def process_group_invitation(self, invitation_data: Dict[str, Any]) -> bool:
         """
-        Process a group invitation and send notification to the invitee
+        Process a group invitation notification
+
+        Args:
+            invitation_data: Group invitation data dictionary
+
+        Returns:
+            bool: True if notification was successfully processed
         """
         try:
             # Extract necessary data from the payload
-            conversation_id = message_data.get('conversationId')
-            sender_id = message_data.get('senderId')
-            invitee_id = message_data.get('inviteeId')
-            group_name = message_data.get('groupName', 'a group')
+            conversation_id = invitation_data.get('conversationId')
+            sender_id = invitation_data.get('senderId')
+            invitee_id = invitation_data.get('inviteeId')
+            group_name = invitation_data.get('groupName', 'a group')
 
-            if not (conversation_id and sender_id and invitee_id):
-                logger.error(f"Invalid group invitation data: {message_data}")
+            if not all([conversation_id, sender_id, invitee_id]):
+                logger.error(f"Invalid group invitation data: {invitation_data}")
                 return False
 
             # Get sender name
@@ -175,217 +197,122 @@ class NotificationService:
                 sender_data = sender.to_dict()
                 sender_name = sender_data.get('name', sender_id)
 
-            # Check if invitee is online
-            user_ref = firestore_db.collection('users').document(invitee_id)
-            user = user_ref.get()
-
-            if not user.exists:
-                logger.error(f"Invitee {invitee_id} not found")
-                return False
-
-            user_data = user.to_dict()
-            is_online = user_data.get('isOnline', False)
-
             # Prepare notification content
             title = f"{sender_name}"
             body = f"invited you to join {group_name}"
 
-            # If user is offline, send push notification
-            if not is_online:
-                # Check notification preferences
-                should_send_push = await self._check_notification_preferences(invitee_id, 'group_invitation')
+            # Create payload for notification event
+            payload = {
+                'conversationId': conversation_id,
+                'senderId': sender_id,
+                'senderName': sender_name,
+                'inviteeId': invitee_id,
+                'groupName': group_name
+            }
 
-                if should_send_push:
-                    await self._send_push_notification(
-                        invitee_id,
-                        title,
-                        body,
-                        conversation_id
-                    )
+            # Send notification event to SQS queue
+            event_sent = await self.send_notification_event(
+                event_type='group_invitation',
+                payload=payload,
+                recipients=[invitee_id]
+            )
 
-                # Store notification in Firestore regardless of push settings
-                self._store_notification(
-                    invitee_id,
-                    'group_invitation',
-                    title,
-                    body,
-                    {
-                        'conversationId': conversation_id,
-                        'senderId': sender_id,
-                        'type': 'group_invitation'
-                    }
-                )
+            # Store notification in Firestore
+            await self._store_notification(
+                invitee_id,
+                'group_invitation',
+                title,
+                body,
+                {
+                    'conversationId': conversation_id,
+                    'senderId': sender_id,
+                    'type': 'group_invitation'
+                }
+            )
 
-            return True
+            return event_sent
 
         except Exception as e:
             logger.error(f"Error processing group invitation notification: {str(e)}")
             return False
 
-    async def _check_notification_preferences(self, user_id, notification_type):
+    async def process_friend_request(self, request_data: Dict[str, Any]) -> bool:
         """
-        Check if a user has enabled notifications for this type
-        """
-        try:
-            pref_ref = firestore_db.collection('notification_preferences').document(user_id)
-            pref = pref_ref.get()
+        Process a friend request notification
 
-            if pref.exists:
-                pref_data = pref.to_dict()
+        Args:
+            request_data: Friend request data dictionary
 
-                # Check if push notifications are enabled
-                push_enabled = pref_data.get('pushEnabled', True)
-                if not push_enabled:
-                    return False
-
-                # Check if notifications are muted
-                mute_until = pref_data.get('muteUntil')
-                if mute_until and datetime.now(timezone.utc) < mute_until:
-                    return False
-
-                # Check for specific notification type
-                if notification_type == 'message':
-                    return pref_data.get('messageNotifications', True)
-                elif notification_type == 'group_invitation':
-                    return pref_data.get('groupNotifications', True)
-                elif notification_type == 'friend_request':
-                    return pref_data.get('friendRequestNotifications', True)
-                elif notification_type == 'system':
-                    return pref_data.get('systemNotifications', True)
-
-            # Default to enabled if no preferences found
-            return True
-
-        except Exception as e:
-            logger.error(f"Error checking notification preferences for user {user_id}: {str(e)}")
-            return True  # Default to True in case of error
-
-    async def _send_push_notification(self, user_id, title, body, conversation_id, message_id=None):
-        """
-        Send push notification to a user's devices
+        Returns:
+            bool: True if notification was successfully processed
         """
         try:
-            # Check user notification preferences
-            pref_ref = firestore_db.collection('notification_preferences').document(user_id)
-            pref = pref_ref.get()
+            # Extract necessary data from the payload
+            sender_id = request_data.get('senderId')
+            recipient_id = request_data.get('recipientId')
 
-            if pref.exists:
-                pref_data = pref.to_dict()
-                push_enabled = pref_data.get('pushEnabled', True)
-                message_notifications = pref_data.get('messageNotifications', True)
-                mute_until = pref_data.get('muteUntil')
+            if not all([sender_id, recipient_id]):
+                logger.error(f"Invalid friend request data: {request_data}")
+                return False
 
-                if not push_enabled or not message_notifications:
-                    logger.info(f"Push notifications disabled for user {user_id}")
-                    return False
+            # Get sender name
+            sender_ref = firestore_db.collection('users').document(sender_id)
+            sender = sender_ref.get()
+            sender_name = sender_id
+            if sender.exists:
+                sender_data = sender.to_dict()
+                sender_name = sender_data.get('name', sender_id)
 
-                # Check if notifications are muted
-                if mute_until and datetime.now(timezone.utc) < mute_until:
-                    logger.info(f"Notifications muted for user {user_id} until {mute_until}")
-                    return False
+            # Prepare notification content
+            title = f"{sender_name}"
+            body = "sent you a friend request"
 
-            # Get user's device tokens
-            tokens_ref = firestore_db.collection('device_tokens')
-            query = tokens_ref.where('userId', '==', user_id)
-            device_tokens_docs = query.stream()
+            # Create payload for notification event
+            payload = {
+                'senderId': sender_id,
+                'senderName': sender_name,
+                'recipientId': recipient_id
+            }
 
-            device_tokens = {}
-            for token_doc in device_tokens_docs:
-                token_data = token_doc.to_dict()
-                device_type = token_data.get('deviceType')
-                token = token_data.get('token')
+            # Send notification event to SQS queue
+            event_sent = await self.send_notification_event(
+                event_type='friend_request',
+                payload=payload,
+                recipients=[recipient_id]
+            )
 
-                if device_type and token:
-                    if device_type not in device_tokens:
-                        device_tokens[device_type] = []
-                    device_tokens[device_type].append(token)
+            # Store notification in Firestore
+            await self._store_notification(
+                recipient_id,
+                'friend_request',
+                title,
+                body,
+                {
+                    'senderId': sender_id,
+                    'type': 'friend_request'
+                }
+            )
 
-            # Prepare data payload
-            data_payload = {'conversationId': conversation_id}
-            if message_id:
-                data_payload['messageId'] = message_id
-
-            # Send notifications through appropriate channels based on device type
-            for platform, tokens in device_tokens.items():
-                try:
-                    # For iOS and Android, use Firebase Cloud Messaging
-                    if platform in ['ios', 'android']:
-                        for token in tokens:
-                            message = messaging.Message(
-                                notification=messaging.Notification(
-                                    title=title,
-                                    body=body
-                                ),
-                                data=data_payload,
-                                token=token
-                            )
-
-                            try:
-                                response = messaging.send(message)
-                                logger.info(f"Successfully sent FCM message to {platform} device: {response}")
-                            except FirebaseError as e:
-                                logger.error(f"Error sending FCM message to {platform} device: {str(e)}")
-                                # Handle invalid tokens
-                                if "registration-token-not-registered" in str(e).lower():
-                                    self._remove_invalid_token(user_id, token)
-
-                    # For web, use SNS
-                    elif platform == 'web':
-                        for token in tokens:
-                            payload = {
-                                'default': f"New message from {title}",
-                                'GCM': json.dumps({
-                                    'notification': {
-                                        'title': title,
-                                        'body': body
-                                    },
-                                    'data': data_payload
-                                })
-                            }
-
-                            try:
-                                # Verify SNS topic ARN is configured
-                                sns_topic_arn = getattr(settings, 'aws_sns_topic_arn', None)
-                                if not sns_topic_arn:
-                                    logger.error("SNS topic ARN is not configured")
-                                    continue
-
-                                self.sns.publish(
-                                    TopicArn=sns_topic_arn,
-                                    Message=json.dumps(payload),
-                                    MessageStructure='json'
-                                )
-                                logger.info(f"Successfully sent SNS message to web client: {token}")
-                            except Exception as e:
-                                logger.error(f"Error sending SNS message: {str(e)}")
-
-                except Exception as e:
-                    logger.error(f"Error sending notification to {platform}: {str(e)}")
-
-            return True
+            return event_sent
 
         except Exception as e:
-            logger.error(f"Error in send_push_notification: {str(e)}")
+            logger.error(f"Error processing friend request notification: {str(e)}")
             return False
 
-    def _remove_invalid_token(self, user_id, token):
+    async def _store_notification(self, user_id: str, notification_type: str,
+                                  title: str, body: str, data: Optional[Dict] = None) -> str:
         """
-        Remove an invalid device token from the database
-        """
-        try:
-            tokens_ref = firestore_db.collection('device_tokens')
-            query = tokens_ref.where('userId', '==', user_id).where('token', '==', token)
-            invalid_tokens = list(query.stream())
+        Store notification in Firestore for retrieval
 
-            for invalid_token in invalid_tokens:
-                invalid_token.reference.delete()
-                logger.info(f"Removed invalid token for user {user_id}: {token}")
-        except Exception as e:
-            logger.error(f"Error removing invalid token: {str(e)}")
+        Args:
+            user_id: User ID to store notification for
+            notification_type: Type of notification (message, group_invitation, etc.)
+            title: Notification title
+            body: Notification body/content
+            data: Additional notification data
 
-    def _store_notification(self, user_id, type, title, body, data=None):
-        """
-        Store notification in Firestore for retrieval when user comes online
+        Returns:
+            str: Notification ID if successfully stored, None otherwise
         """
         try:
             notification_id = str(uuid.uuid4())
@@ -394,7 +321,7 @@ class NotificationService:
             notification_data = {
                 'notificationId': notification_id,
                 'userId': user_id,
-                'type': type,
+                'type': notification_type,
                 'title': title,
                 'body': body,
                 'data': data,
