@@ -323,7 +323,13 @@ async def accept_invite(request: Request):
     # [3]: Check if phone number exist in realtimeDB
     vResponse = validate_realtimeDB_user_existed(phone_number)
 
-    # [4]: Check if accepted phone number exist in this user's invites
+
+    # [4]: Check if accepted phone number is different from host phone number
+    if vRequest["accept_phone_number"] == phone_number:
+        log(f'[Error] accepted number cannot be the same as host number: {phone_number}')
+        raise HTTPException(status_code=400, detail=f'[Error] accepted number cannot be the same as host number: {phone_number}')
+
+    # [5]: Check if accepted phone number exist in this user's invites
     if "invites" not in vResponse["body"]:
         log(f'[Error] Invites not found in realtime database')
         raise HTTPException(status_code=404, detail=f"Invites not found in realtime database")
@@ -331,22 +337,22 @@ async def accept_invite(request: Request):
         log(f'[Error] Invite for {vRequest["accept_phone_number"]} not found in realtime database')
         raise HTTPException(status_code=404, detail=f'Invite for {vRequest["accept_phone_number"]} not found in realtime database')
 
-    # [5]: Check if accepted phone number exist in realtimeDB
+    # [6]: Check if accepted phone number exist in realtimeDB
     vResponseAcc = validate_realtimeDB_user_existed(vRequest["accept_phone_number"])
 
-    # [6]: Filter keys for both users
+    # [7]: Filter keys for both users
     vUserKeys = ["name", "profile_pic"]
     vUser = {key: value for key, value in vResponse["body"].items() if key in vUserKeys}
     vUserAcc = {key: value for key, value in vResponseAcc["body"].items() if key in vUserKeys}
     log(f"[Debug] The accepted phone_number's data is: {vUserAcc}")
 
-    # [7]: Update user's friends
+    # [8]: Update user's friends
     database.insert(f'/User/{phone_number}/friends/{vRequest["accept_phone_number"]}', vUserAcc)
 
-    # [8]: Update accepted number's friends
+    # [9]: Update accepted number's friends
     database.insert(f'/User/{vRequest["accept_phone_number"]}/friends/{phone_number}', vUser)
 
-    # [9]: Remove accepted invitation from host
+    # [10]: Remove accepted invitation from host
     vRep = {}
     database.delete(f'/User/{phone_number}/invites/{vRequest["accept_phone_number"]}', response=vRep)
     return {"success": True}
