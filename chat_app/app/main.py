@@ -95,6 +95,15 @@ def validate_phone_str(phone_number_str):
         raise HTTPException(status_code=400, detail=f"[Error]: Invalid phone number: {phone_number_str}")
     return
 
+def validate_realtimeDB_user_existed(user):
+    vResponse = {}
+    database.query(f'/User/{user}', response=vResponse)
+    log(f"[Debug] The realtimeDB data is: {vResponse}")
+    if not vResponse["body"]:
+        log(f'[Error] Phone number {user} not found in realtimeDB')
+        raise HTTPException(status_code=401, detail=f"[Error]: Phone number {user} not found in realtimeDB")
+    return vResponse
+
 @app.post("/auth/register", status_code=201)
 async def register(request: Request):
     vRequest = await request.json()
@@ -154,12 +163,7 @@ async def login(request: Request):
         raise HTTPException(status_code=401, detail="[Error]: Phone number not found in Authen")
 
     # [5]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
+    vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
     # [6]: Check if password matches user
     password_hash = hash(vRequest["password"])
@@ -184,12 +188,7 @@ async def change_pass(request: Request):
     validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
+    vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
     # [3]: Check if user's password matches old password
     password_hash = hashlib.sha256(vRequest["old_password"].encode("utf-8")).hexdigest()
@@ -214,12 +213,7 @@ async def forgot_pass(request: Request):
     validate_request_body(vRequest, "new_password", str, required=True)
     
     # [3]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found')
-        raise HTTPException(status_code=401, detail="[Error]: Phone number not found in realtimeDB")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [4]: Update user's password
     password_hash = hash(vRequest["new_password"])
@@ -237,14 +231,10 @@ async def profile(request: Request):
     log(f"[Debug] Queried user is: {user}")
 
     # [3]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     return {"user": user, "user_data": vResponse["body"]}
+
 
 @app.post("/auth/update-profile", status_code=200)
 async def update_profile(request: Request):
@@ -258,14 +248,9 @@ async def update_profile(request: Request):
     validate_request_body(vRequest, "profile_pic", str, required=False)
 
     # [3]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if vResponse["body"]:
-        log(f'[Error] User already exist in realtime database: {vResponse["body"]}')
-        raise HTTPException(status_code=409, detail="[Error]: User already exist in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
-    # [4]: Update user and hashed password to DB if not existed
+    # [4]: Update user and hashed password to DB
     if "name" in vRequest: database.insert(f'/User/{phone_number}/name', vRequest["name"])
     if "profile_pic" in vRequest: database.insert(f'/User/{phone_number}/profile_pic', vRequest["profile_pic"])
     return {"success": True}
@@ -281,12 +266,7 @@ async def contact(request: Request):
     validate_phone_str(vRequest["phone_number"])
 
     # [2]: Check if phone number exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{vRequest["phone_number"]}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(vRequest["phone_number"])
 
     # [3]: Filter response keys
     vResponseKeys = ["name", "profile_pic"]
@@ -307,20 +287,10 @@ async def send_invite(request: Request):
     validate_phone_str(vRequest["invite_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [4]: Check if invited phone number exist in realtimeDB
-    vResponseInv = {}
-    database.query(f'/User/{vRequest["invite_phone_number"]}', response=vResponseInv)
-    log(f"[Debug] The realtimeDB data is: {vResponseInv}")
-    if not vResponseInv["body"]:
-        log(f'[Error] Invited phone number not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: Invited phone number not found in database")
+    vResponseInv = validate_realtimeDB_user_existed(vRequest["invite_phone_number"])
 
     # [5]: Filter invite keys for inviting number
     vInvKeys = ["name", "profile_pic"]
@@ -345,12 +315,7 @@ async def accept_invite(request: Request):
     validate_phone_str(vRequest["accept_phone_number"])
 
     # [3]: Check if phone number exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [4]: Check if accepted phone number exist in this user's invites
     if "invites" not in vResponse["body"]:
@@ -361,12 +326,7 @@ async def accept_invite(request: Request):
         raise HTTPException(status_code=404, detail=f"Invite for {vRequest["accept_phone_number"]} not found in realtime database")
 
     # [5]: Check if accepted phone number exist in realtimeDB
-    vResponseAcc = {}
-    database.query(f'/User/{vRequest["accept_phone_number"]}', response=vResponseAcc)
-    log(f"[Debug] The realtimeDB data is: {vResponseAcc}")
-    if not vResponseAcc["body"]:
-        log(f'[Error] Accepted phone number not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: Accepted phone number not found in database")
+    vResponseAcc = validate_realtimeDB_user_existed(vRequest["accept_phone_number"])
 
     # [6]: Filter keys for both users
     vUserKeys = ["name", "profile_pic"]
@@ -388,12 +348,7 @@ async def contacts(request: Request):
     decoded_token, phone_number = validate_header(request=request)
 
     # [2]: Check if user exist in realtimeDB
-    vResponse = {}
-    database.query(f'/User/{phone_number}', response=vResponse)
-    log(f"[Debug] The realtimeDB data is: {vResponse}")
-    if not vResponse["body"]:
-        log(f'[Error] User not found in realtime database')
-        raise HTTPException(status_code=404, detail="[Error]: User not found in database")
+    vResponse = validate_realtimeDB_user_existed(phone_number)
 
     # [3]: Check if user realtimeDB has contacts (friends)
     if "friends" not in vResponse["body"]:
