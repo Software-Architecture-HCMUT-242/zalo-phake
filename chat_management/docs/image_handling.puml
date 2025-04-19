@@ -1,0 +1,30 @@
+@startuml
+actor "User" as user
+participant "API Gateway" as api
+participant "Chat Management\nService" as cms
+participant "S3 Client" as s3c
+database "S3 Bucket" as s3
+database "Firestore" as fs
+queue "Redis PubSub" as redis
+queue "SQS" as sqs
+participant "Notification\nConsumer" as nc
+
+user -> api: POST /conversations/{id}/images/upload_url
+api -> cms: Upload image request
+cms -> cms: Generate presigned URL
+cms -> user: Return presigned URL
+user -> s3: Upload image directly
+user -> cms: POST /conversations/{id}/messages\n(with image metadata)
+cms -> s3c: Validate image exists
+s3c -> s3: Check image
+s3c --> cms: Image confirmation
+cms -> fs: Store message with image URL
+cms -> redis: Publish new image message event
+redis --> cms: Acknowledgment
+cms -> sqs: Queue notification for offline users
+sqs --> cms: Message queued confirmation
+cms -> user: Image message sent confirmation
+redis --> user: Real-time update to online users
+sqs --> nc: Process offline notifications
+nc --> user: Push notification to offline users
+@enduml

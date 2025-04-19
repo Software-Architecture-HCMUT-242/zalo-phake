@@ -114,10 +114,32 @@ class MessageType(str, Enum):
     AUDIO = "audio"
 
 
+class ImageMetadata(BaseModel):
+    """Metadata for image messages"""
+    object_key: str
+    url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    content_type: str = "image/jpeg"
+    size_bytes: Optional[int] = None
+
+class ImageUploadRequest(BaseModel):
+    """Request body for getting a presigned URL for image upload"""
+    content_type: str = "image/jpeg"
+    filename: Optional[str] = None
+
+class ImageUploadResponse(BaseModel):
+    """Response for image upload URL request"""
+    upload_url: str
+    object_key: str
+    file_url: str
+    expires_at: str
+
 class MessageCreate(BaseModel):
     """Request body for creating a new message"""
     content: str
     messageType: str = "text"
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class Message(BaseModel):
@@ -127,6 +149,41 @@ class Message(BaseModel):
     messageType: MessageType
     timestamp: datetime
     readBy: List[str]
+    metadata: Optional[Dict[str, Any]] = None
+    
+    def get_secure_image_url(self, api_base_url: Optional[str] = None) -> Optional[str]:
+        """Get the secure image URL for image messages, ensuring it goes through the auth proxy
+        
+        Args:
+            api_base_url: Optional API base URL override
+            
+        Returns:
+            str: Secure image URL or None if not an image message
+        """
+        from ..aws.config import settings
+        
+        if self.messageType != MessageType.IMAGE or not self.metadata:
+            return None
+            
+        # Get image data from metadata
+        object_key = self.metadata.get('object_key')
+        conversation_id = self.metadata.get('conversation_id')
+        
+        if not object_key or not conversation_id:
+            # Try to extract conversation_id from object_key if available
+            if object_key and object_key.startswith('conversations/'):
+                # Format: conversations/{conv_id}/images/{user_id}/{filename}
+                parts = object_key.split('/')
+                if len(parts) >= 2:
+                    conversation_id = parts[1]
+        
+        if not object_key or not conversation_id:
+            return None
+            
+        # Create secure URL through proxy
+        base_url = api_base_url or settings.image_proxy_base_url
+        encoded_key = object_key.replace('/', '%2F')
+        return f"{base_url}/{conversation_id}/{encoded_key}"
 
 
 # Define response models for maintenance endpoints

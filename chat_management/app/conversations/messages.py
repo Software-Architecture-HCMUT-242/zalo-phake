@@ -13,10 +13,11 @@ from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import BaseQuery
 
 from ..aws.sqs_utils import is_sqs_available, send_chat_message_notification
+from ..aws.s3_client import S3Client
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
 from ..redis.connection import get_redis_connection
-from .schemas import Message, MessageType, MessageCreate
+from .schemas import Message, MessageType, MessageCreate, ImageUploadRequest, ImageUploadResponse
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
@@ -31,6 +32,7 @@ router = APIRouter(
 
 notification_service = NotificationService()
 connection_manager = get_connection_manager()
+s3_client = S3Client()
 tags = ["Messages"]
 
 
@@ -129,6 +131,85 @@ async def get_conversation_messages(
     )
 
 
+@router.post('/conversations/{conversation_id}/images/upload_url', response_model=ImageUploadResponse, tags=tags)
+async def get_image_upload_url(
+        conversation_id: str,
+        upload_request: ImageUploadRequest,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Get a presigned URL for uploading an image to S3
+    
+    Args:
+        conversation_id: The ID of the conversation
+        upload_request: The upload request details
+        current_user: The authenticated user making the request
+        
+    Returns:
+        ImageUploadResponse: Contains the presigned URL and object details
+        
+    Raises:
+        403: If the user is not a participant in the conversation
+        404: If the conversation doesn't exist
+        500: If there's an error generating the URL
+    """
+    # Verify conversation exists and user is a participant
+    try:
+        conversation_ref = firestore_db.collection('conversations').document(conversation_id)
+        conversation = await asyncio.to_thread(conversation_ref.get)
+
+        if not conversation.exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+
+        conversation_data = conversation.to_dict()
+        if current_user.phoneNumber not in conversation_data.get('participants', []):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a participant in this conversation"
+            )
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error validating conversation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to access conversation data"
+        )
+    
+    # Validate content type to ensure it's an image
+    content_type = upload_request.content_type.lower()
+    if not content_type.startswith('image/'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Content type must be an image format"
+        )
+    
+    # Generate presigned URL
+    try:
+        presigned_data = s3_client.generate_presigned_url(
+            user_id=current_user.phoneNumber,
+            conversation_id=conversation_id,
+            content_type=upload_request.content_type
+        )
+        
+        return ImageUploadResponse(
+            upload_url=presigned_data['presigned_url'],
+            object_key=presigned_data['object_key'],
+            file_url=presigned_data['url'],
+            expires_at=presigned_data['expires_at']
+        )
+    except Exception as e:
+        logger.error(f"Error generating presigned URL: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate upload URL"
+        )
+
+
 @router.post('/conversations/{conversation_id}/messages', tags=tags)
 async def send_conversation_message(
         conversation_id: str,
@@ -156,10 +237,10 @@ async def send_conversation_message(
     content = message.content
     message_type = message.messageType
 
-    if not content:
+    if not content and message_type == MessageType.TEXT:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Content is required"
+            detail="Content is required for text messages"
         )
 
     # Validate message type
@@ -168,6 +249,32 @@ async def send_conversation_message(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid message type. Must be one of: {[m.value for m in MessageType]}"
         )
+        
+    # Add image-specific validation
+    if message_type == MessageType.IMAGE:
+        if not message.metadata or 'object_key' not in message.metadata:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Image messages require object_key in metadata"
+            )
+        
+        # Verify image exists in S3
+        try:
+            object_key = message.metadata['object_key']
+            exists = await asyncio.to_thread(s3_client.check_object_exists, object_key)
+            if not exists:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Image not found in storage"
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error checking image exists: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to verify image"
+            )
 
     # Verify conversation exists and user is a participant
     try:
@@ -206,6 +313,10 @@ async def send_conversation_message(
         'timestamp': now,
         'readBy': [current_user.phoneNumber]  # Sender has read their own message
     }
+    
+    # Add metadata for non-text messages
+    if message.metadata and message_type != MessageType.TEXT:
+        message_data['metadata'] = message.metadata
 
     # Step 1: Save message to Firestore
     try:
