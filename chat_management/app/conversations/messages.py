@@ -17,7 +17,7 @@ from ..aws.s3_client import S3Client
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user
 from ..firebase import firestore_db
 from ..redis.connection import get_redis_connection
-from .schemas import Message, MessageType, MessageCreate, ImageUploadRequest, ImageUploadResponse
+from .schemas import Message, MessageType, MessageCreate, MediaUploadRequest, ImageUploadRequest, VideoUploadRequest, AudioUploadRequest, MediaUploadResponse, ImageUploadResponse, VideoUploadResponse, AudioUploadResponse
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
 from ..time_utils import convert_timestamps
@@ -109,14 +109,22 @@ async def get_conversation_messages(
             # Convert Firestore timestamps to datetime objects
             msg_data = convert_timestamps(msg_data)
             # Create Message object
-            messages.append(Message(
+            message = Message(
                 messageId=msg.id,
                 senderId=msg_data.get('senderId'),
                 content=msg_data.get('content', ''),
                 messageType=msg_data.get('messageType', MessageType.TEXT),
                 timestamp=msg_data.get('timestamp'),
-                readBy=msg_data.get('readBy', [])
-            ))
+                readBy=msg_data.get('readBy', []),
+                metadata=msg_data.get('metadata', {})
+            )
+            
+            # Add conversation_id to metadata for media URLs if not present
+            if message.messageType in [MessageType.IMAGE, MessageType.VIDEO, MessageType.AUDIO] and message.metadata:
+                if 'conversation_id' not in message.metadata:
+                    message.metadata['conversation_id'] = conversation_id
+                
+            messages.append(message)
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {str(e)}")
             print(traceback.format_exc())
@@ -131,14 +139,14 @@ async def get_conversation_messages(
     )
 
 
-@router.post('/conversations/{conversation_id}/images/upload_url', response_model=ImageUploadResponse, tags=tags)
-async def get_image_upload_url(
+@router.post('/conversations/{conversation_id}/media/upload_url', response_model=MediaUploadResponse, tags=tags)
+async def get_media_upload_url(
         conversation_id: str,
-        upload_request: ImageUploadRequest,
+        upload_request: MediaUploadRequest,
         current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
 ):
     """
-    Get a presigned URL for uploading an image to S3
+    Get a presigned URL for uploading media (image, video, audio) to S3
     
     Args:
         conversation_id: The ID of the conversation
@@ -146,7 +154,7 @@ async def get_image_upload_url(
         current_user: The authenticated user making the request
         
     Returns:
-        ImageUploadResponse: Contains the presigned URL and object details
+        MediaUploadResponse: Contains the presigned URL and object details
         
     Raises:
         403: If the user is not a participant in the conversation
@@ -180,12 +188,12 @@ async def get_image_upload_url(
             detail="Failed to access conversation data"
         )
     
-    # Validate content type to ensure it's an image
+    # Validate content type to ensure it's an acceptable media type
     content_type = upload_request.content_type.lower()
-    if not content_type.startswith('image/'):
+    if not (content_type.startswith('image/') or content_type.startswith('video/') or content_type.startswith('audio/')):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Content type must be an image format"
+            detail="Content type must be an image, video, or audio format"
         )
     
     # Generate presigned URL
@@ -196,7 +204,7 @@ async def get_image_upload_url(
             content_type=upload_request.content_type
         )
         
-        return ImageUploadResponse(
+        return MediaUploadResponse(
             upload_url=presigned_data['presigned_url'],
             object_key=presigned_data['object_key'],
             file_url=presigned_data['url'],
@@ -208,6 +216,87 @@ async def get_image_upload_url(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate upload URL"
         )
+
+
+@router.post('/conversations/{conversation_id}/images/upload_url', response_model=ImageUploadResponse, tags=tags)
+async def get_image_upload_url(
+        conversation_id: str,
+        upload_request: ImageUploadRequest,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Get a presigned URL for uploading an image to S3
+    
+    Args:
+        conversation_id: The ID of the conversation
+        upload_request: The upload request details
+        current_user: The authenticated user making the request
+        
+    Returns:
+        ImageUploadResponse: Contains the presigned URL and object details
+        
+    Raises:
+        403: If the user is not a participant in the conversation
+        404: If the conversation doesn't exist
+        500: If there's an error generating the URL
+    """
+    # Reuse media upload URL functionality
+    response = await get_media_upload_url(conversation_id, upload_request, current_user)
+    return ImageUploadResponse.parse_obj(response.dict())
+
+
+@router.post('/conversations/{conversation_id}/videos/upload_url', response_model=VideoUploadResponse, tags=tags)
+async def get_video_upload_url(
+        conversation_id: str,
+        upload_request: VideoUploadRequest,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Get a presigned URL for uploading a video to S3
+    
+    Args:
+        conversation_id: The ID of the conversation
+        upload_request: The upload request details
+        current_user: The authenticated user making the request
+        
+    Returns:
+        VideoUploadResponse: Contains the presigned URL and object details
+        
+    Raises:
+        403: If the user is not a participant in the conversation
+        404: If the conversation doesn't exist
+        500: If there's an error generating the URL
+    """
+    # Reuse media upload URL functionality
+    response = await get_media_upload_url(conversation_id, upload_request, current_user)
+    return VideoUploadResponse.parse_obj(response.dict())
+
+
+@router.post('/conversations/{conversation_id}/audio/upload_url', response_model=AudioUploadResponse, tags=tags)
+async def get_audio_upload_url(
+        conversation_id: str,
+        upload_request: AudioUploadRequest,
+        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
+):
+    """
+    Get a presigned URL for uploading an audio file to S3
+    
+    Args:
+        conversation_id: The ID of the conversation
+        upload_request: The upload request details
+        current_user: The authenticated user making the request
+        
+    Returns:
+        AudioUploadResponse: Contains the presigned URL and object details
+        
+    Raises:
+        403: If the user is not a participant in the conversation
+        404: If the conversation doesn't exist
+        500: If there's an error generating the URL
+    """
+    # Reuse media upload URL functionality
+    response = await get_media_upload_url(conversation_id, upload_request, current_user)
+    return AudioUploadResponse.parse_obj(response.dict())
 
 
 @router.post('/conversations/{conversation_id}/messages', tags=tags)
@@ -250,30 +339,30 @@ async def send_conversation_message(
             detail=f"Invalid message type. Must be one of: {[m.value for m in MessageType]}"
         )
         
-    # Add image-specific validation
-    if message_type == MessageType.IMAGE:
+    # Add media-specific validation
+    if message_type in [MessageType.IMAGE, MessageType.VIDEO, MessageType.AUDIO]:
         if not message.metadata or 'object_key' not in message.metadata:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Image messages require object_key in metadata"
+                detail=f"{message_type} messages require object_key in metadata"
             )
         
-        # Verify image exists in S3
+        # Verify media exists in S3
         try:
             object_key = message.metadata['object_key']
             exists = await asyncio.to_thread(s3_client.check_object_exists, object_key)
             if not exists:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Image not found in storage"
+                    detail=f"{message_type} not found in storage"
                 )
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error checking image exists: {str(e)}")
+            logger.error(f"Error checking {message_type} exists: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to verify image"
+                detail=f"Failed to verify {message_type}"
             )
 
     # Verify conversation exists and user is a participant

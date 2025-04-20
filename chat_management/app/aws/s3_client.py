@@ -1,5 +1,5 @@
 """
-S3 client for handling image uploads in the chat management service
+S3 client for handling media uploads (images, videos, audio) in the chat management service
 """
 import logging
 import boto3
@@ -30,12 +30,12 @@ class S3Client:
     
     def generate_presigned_url(self, user_id: str, conversation_id: str, content_type: str = 'image/jpeg', expiration=3600):
         """
-        Generate a presigned URL for uploading an image directly to S3.
+        Generate a presigned URL for uploading media (image, video, audio) directly to S3.
         
         Args:
-            user_id: The ID of the user uploading the image
-            conversation_id: The ID of the conversation the image belongs to
-            content_type: The MIME type of the image
+            user_id: The ID of the user uploading the media
+            conversation_id: The ID of the conversation the media belongs to
+            content_type: The MIME type of the media
             expiration: URL expiration time in seconds
             
         Returns:
@@ -47,9 +47,16 @@ class S3Client:
             file_uuid = str(uuid.uuid4())
             extension = self._get_extension_from_content_type(content_type)
             
-            # Create object key in format: conversations/{conv_id}/images/{user_id}/{timestamp}-{uuid}.ext
-            # This organizes images by conversation for better access control and cleanup
-            object_key = f"conversations/{conversation_id}/images/{user_id}/{timestamp}-{file_uuid}{extension}"
+            # Determine the media folder based on content type
+            media_folder = "images"
+            if content_type.startswith("video/"):
+                media_folder = "videos"
+            elif content_type.startswith("audio/"):
+                media_folder = "audios"
+            
+            # Create object key in format: conversations/{conv_id}/{media_folder}/{user_id}/{timestamp}-{uuid}.ext
+            # This organizes media by conversation and type for better access control and cleanup
+            object_key = f"conversations/{conversation_id}/{media_folder}/{user_id}/{timestamp}-{file_uuid}{extension}"
             
             # Generate the presigned URL for upload
             presigned_url = self.s3.generate_presigned_url(
@@ -166,7 +173,7 @@ class S3Client:
     
     def generate_signed_url(self, object_key, conversation_id, user_id, expiration=3600):
         """
-        Generate a signed URL for viewing an image, with authorization embedded in the URL.
+        Generate a signed URL for viewing media (image, video, audio), with authorization embedded in the URL.
         
         Args:
             object_key: The key of the object in S3
@@ -175,7 +182,7 @@ class S3Client:
             expiration: URL expiration time in seconds
             
         Returns:
-            str: Signed URL for accessing the image
+            str: Signed URL for accessing the media
         """
         try:
             # Generate a signed URL with embedded conversation ID for server-side verification
@@ -206,17 +213,18 @@ class S3Client:
     
     def _generate_access_url(self, object_key, conversation_id):
         """
-        Generate a URL for accessing an image through our proxy service which performs auth.
+        Generate a URL for accessing media through our proxy service which performs auth.
         
         Args:
             object_key: The key of the object in S3
             conversation_id: The conversation ID
             
         Returns:
-            str: URL for accessing the image through our proxy
+            str: URL for accessing the media through our proxy
         """
         # Use the proxy URL format that will handle authorization
-        proxy_base_url = settings.image_proxy_base_url
+        # First try to use media_proxy_base_url if available, otherwise fall back to image_proxy_base_url
+        proxy_base_url = getattr(settings, 'media_proxy_base_url', settings.image_proxy_base_url)
         
         # Format is: {proxy_base_url}/{conversation_id}/{object_key}
         # The proxy will handle authorization by checking if the user is in the conversation
@@ -225,7 +233,7 @@ class S3Client:
     
     def _generate_auth_token(self, object_key, conversation_id, user_id):
         """
-        Generate an auth token for validating image access requests.
+        Generate an auth token for validating media access requests.
         
         Args:
             object_key: The key of the object in S3
@@ -237,7 +245,8 @@ class S3Client:
         """
         # Create a token using a keyed hash with our secret key
         data = f"{object_key}:{conversation_id}:{user_id}"
-        secret = settings.image_auth_secret
+        # Try media_auth_secret first, fall back to image_auth_secret if not available
+        secret = getattr(settings, 'media_auth_secret', settings.image_auth_secret)
         
         # Use HMAC for secure token generation
         hash_obj = hashlib.sha256(f"{data}:{secret}".encode())
@@ -255,6 +264,7 @@ class S3Client:
         """
         # Map of common content types to extensions
         content_type_map = {
+            # Images
             'image/jpeg': '.jpg',
             'image/jpg': '.jpg',
             'image/png': '.png',
@@ -262,7 +272,37 @@ class S3Client:
             'image/webp': '.webp',
             'image/svg+xml': '.svg',
             'image/bmp': '.bmp',
-            'image/tiff': '.tiff'
+            'image/tiff': '.tiff',
+            
+            # Videos
+            'video/mp4': '.mp4',
+            'video/mpeg': '.mpg',
+            'video/quicktime': '.mov',
+            'video/x-msvideo': '.avi',
+            'video/webm': '.webm',
+            'video/3gpp': '.3gp',
+            'video/3gpp2': '.3g2',
+            'video/x-matroska': '.mkv',
+            
+            # Audio
+            'audio/mpeg': '.mp3',
+            'audio/mp4': '.m4a',
+            'audio/wav': '.wav',
+            'audio/webm': '.weba',
+            'audio/aac': '.aac',
+            'audio/ogg': '.ogg',
+            'audio/flac': '.flac',
+            'audio/x-ms-wma': '.wma'
         }
         
-        return content_type_map.get(content_type.lower(), '.jpg')  # Default to .jpg
+        lowercase_type = content_type.lower()
+        
+        # Default extensions based on media type
+        if lowercase_type.startswith('image/'):
+            return content_type_map.get(lowercase_type, '.jpg')
+        elif lowercase_type.startswith('video/'):
+            return content_type_map.get(lowercase_type, '.mp4')
+        elif lowercase_type.startswith('audio/'):
+            return content_type_map.get(lowercase_type, '.mp3')
+        else:
+            return '.bin'  # Generic binary extension as fallback

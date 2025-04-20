@@ -90,45 +90,46 @@ async def get_image(
                 detail="Image not found"
             )
             
-        # Get image conversation ID from object metadata or path
-        img_conversation_id = metadata.get('metadata', {}).get('conversation-id')
+        # Get media file conversation ID from object metadata or path
+        media_conversation_id = metadata.get('metadata', {}).get('conversation-id')
         
         # If metadata doesn't have conversation ID, extract it from the path
-        if not img_conversation_id and object_key.startswith(f"conversations/"):
-            # Format is: conversations/{conv_id}/images/{user_id}/{filename}
+        if not media_conversation_id and object_key.startswith(f"conversations/"):
+            # Format is: conversations/{conv_id}/{media_type}/{user_id}/{filename}
             path_parts = object_key.split('/')
             if len(path_parts) >= 2:
-                img_conversation_id = path_parts[1]
+                media_conversation_id = path_parts[1]
         
-        # Double-check that the image belongs to this conversation
-        if img_conversation_id and img_conversation_id != conversation_id:
-            logger.warning(f"User {user_id} attempted to access image from wrong conversation")
+        # Double-check that the media file belongs to this conversation
+        if media_conversation_id and media_conversation_id != conversation_id:
+            logger.warning(f"User {user_id} attempted to access media from wrong conversation")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied - Image does not belong to this conversation"
+                detail="Access denied - Media file does not belong to this conversation"
             )
         
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        logger.error(f"Error verifying image: {str(e)}")
+        logger.error(f"Error verifying media file: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to verify image"
+            detail="Failed to verify media file"
         )
     
     # Generate a temporary signed URL and redirect the user
     try:
+        expiration = getattr(settings, 'media_url_expiration', settings.image_url_expiration)
         signed_url = s3_client.generate_signed_url(
             object_key=object_key,
             conversation_id=conversation_id,
             user_id=user_id,
-            expiration=settings.image_url_expiration
+            expiration=expiration
         )
         
         # Log access for audit purposes
-        logger.info(f"User {user_id} granted access to image {object_key} in conversation {conversation_id}")
+        logger.info(f"User {user_id} granted access to media file {object_key} in conversation {conversation_id}")
         
         # Return a redirect to the signed URL
         return RedirectResponse(url=signed_url)
@@ -137,5 +138,5 @@ async def get_image(
         logger.error(f"Error generating signed URL: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate image access URL"
+            detail="Failed to generate media access URL"
         )

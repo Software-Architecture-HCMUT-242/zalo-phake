@@ -12,7 +12,8 @@ from .conversations import all_router as conversations_routers
 from .notifications.router import router as notifications_router
 from .ws.router import router as ws_router
 from .ws.api_endpoints import router as ws_api_router
-from .aws.image_proxy import router as image_proxy_router
+from .aws.media_proxy import router as media_proxy_router
+from .aws.image_proxy import router as image_proxy_router  # Keep for backward compatibility
 from .redis.pubsub import start_pubsub_listener
 from .dependencies import decode_token
 from .firebase import firestore_db
@@ -68,7 +69,8 @@ for router in conversations_routers:
 app.include_router(notifications_router)
 app.include_router(ws_router)
 app.include_router(ws_api_router)
-app.include_router(image_proxy_router)
+app.include_router(media_proxy_router)
+app.include_router(image_proxy_router)  # Keep for backward compatibility
 
 
 @app.on_event("startup")

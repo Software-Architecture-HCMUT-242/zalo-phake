@@ -29,6 +29,11 @@ class AWSConfig(BaseSettings):
     image_proxy_base_url: str = os.environ.get('IMAGE_PROXY_URL', 'https://images.zalo-phake.example.com')
     image_auth_secret: str = os.environ.get('IMAGE_AUTH_SECRET', 'change-this-in-production')
     image_url_expiration: int = int(os.environ.get('IMAGE_URL_EXPIRATION', '3600'))  # 1 hour default
+    
+    # Media access security (videos, audio)
+    media_proxy_base_url: str = os.environ.get('MEDIA_PROXY_URL', os.environ.get('IMAGE_PROXY_URL', 'https://media.zalo-phake.example.com'))
+    media_auth_secret: str = os.environ.get('MEDIA_AUTH_SECRET', os.environ.get('IMAGE_AUTH_SECRET', 'change-this-in-production'))
+    media_url_expiration: int = int(os.environ.get('MEDIA_URL_EXPIRATION', os.environ.get('IMAGE_URL_EXPIRATION', '3600')))  # 1 hour default
 
     # Push Notification Configuration is now handled by the notification_consumer service using Firebase Cloud Messaging (FCM) only
 

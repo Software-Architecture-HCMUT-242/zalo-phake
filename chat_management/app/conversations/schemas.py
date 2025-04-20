@@ -2,6 +2,10 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
 
+from datetime import datetime
+from enum import Enum
+from typing import List
+
 from pydantic import BaseModel, Field
 
 
@@ -99,14 +103,6 @@ class AddMemberRequest(BaseModel):
     """Request model for adding a member to a conversation"""
     user_id: str
 
-
-from datetime import datetime
-from enum import Enum
-from typing import List
-
-from pydantic import BaseModel
-
-
 class MessageType(str, Enum):
     TEXT = "text"
     IMAGE = "image"
@@ -123,17 +119,55 @@ class ImageMetadata(BaseModel):
     content_type: str = "image/jpeg"
     size_bytes: Optional[int] = None
 
-class ImageUploadRequest(BaseModel):
-    """Request body for getting a presigned URL for image upload"""
-    content_type: str = "image/jpeg"
+class VideoMetadata(BaseModel):
+    """Metadata for video messages"""
+    object_key: str
+    url: str
+    content_type: str = "video/mp4"
+    size_bytes: Optional[int] = None
+    
+class AudioMetadata(BaseModel):
+    """Metadata for audio messages"""
+    object_key: str
+    url: str
+    content_type: str = "audio/mpeg"
+    size_bytes: Optional[int] = None
+
+class MediaUploadRequest(BaseModel):
+    """Request body for getting a presigned URL for media upload"""
+    content_type: str
     filename: Optional[str] = None
 
-class ImageUploadResponse(BaseModel):
-    """Response for image upload URL request"""
+class ImageUploadRequest(MediaUploadRequest):
+    """Request body for getting a presigned URL for image upload"""
+    content_type: str = "image/jpeg"
+
+class VideoUploadRequest(MediaUploadRequest):
+    """Request body for getting a presigned URL for video upload"""
+    content_type: str = "video/mp4"
+
+class AudioUploadRequest(MediaUploadRequest):
+    """Request body for getting a presigned URL for audio upload"""
+    content_type: str = "audio/mpeg"
+
+class MediaUploadResponse(BaseModel):
+    """Response for media upload URL request"""
     upload_url: str
     object_key: str
     file_url: str
     expires_at: str
+
+class ImageUploadResponse(MediaUploadResponse):
+    """Response for image upload URL request"""
+    pass
+
+class VideoUploadResponse(MediaUploadResponse):
+    """Response for video upload URL request"""
+    pass
+
+class AudioUploadResponse(MediaUploadResponse):
+    """Response for audio upload URL request"""
+    pass
 
 class MessageCreate(BaseModel):
     """Request body for creating a new message"""
@@ -151,21 +185,21 @@ class Message(BaseModel):
     readBy: List[str]
     metadata: Optional[Dict[str, Any]] = None
     
-    def get_secure_image_url(self, api_base_url: Optional[str] = None) -> Optional[str]:
-        """Get the secure image URL for image messages, ensuring it goes through the auth proxy
+    def get_secure_media_url(self, api_base_url: Optional[str] = None) -> Optional[str]:
+        """Get the secure media URL for image/video/audio messages, ensuring it goes through the auth proxy
         
         Args:
             api_base_url: Optional API base URL override
             
         Returns:
-            str: Secure image URL or None if not an image message
+            str: Secure media URL or None if not a media message
         """
         from ..aws.config import settings
         
-        if self.messageType != MessageType.IMAGE or not self.metadata:
+        if self.messageType not in [MessageType.IMAGE, MessageType.VIDEO, MessageType.AUDIO] or not self.metadata:
             return None
             
-        # Get image data from metadata
+        # Get media data from metadata
         object_key = self.metadata.get('object_key')
         conversation_id = self.metadata.get('conversation_id')
         
@@ -181,7 +215,7 @@ class Message(BaseModel):
             return None
             
         # Create secure URL through proxy
-        base_url = api_base_url or settings.image_proxy_base_url
+        base_url = api_base_url or settings.media_proxy_base_url or settings.image_proxy_base_url
         encoded_key = object_key.replace('/', '%2F')
         return f"{base_url}/{conversation_id}/{encoded_key}"
 
