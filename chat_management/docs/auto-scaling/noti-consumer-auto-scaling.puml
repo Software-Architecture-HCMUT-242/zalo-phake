@@ -1,0 +1,48 @@
+@startuml Consumer Auto-Scaling Flow
+!theme vibrant
+!define AWSPuml https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v19.0/dist
+
+!include AWSPuml/AWSCommon.puml
+!include AWSPuml/ApplicationIntegration/all.puml
+!include AWSPuml/ManagementGovernance/CloudWatch.puml
+!include AWSPuml/ManagementGovernance/ApplicationAutoScaling2.puml
+!include AWSPuml/Containers/all.puml
+
+title Notification Consumer Auto-Scaling Flow
+
+' participant "$APIGatewayIMG()\nCredit Card System\nAll methods are POST" as api << REST API >>
+
+actor "Publisher Service(s)" as Publisher
+participant "$SimpleQueueServiceIMG()\nNotification Queue" as SQS << SQS >>
+participant "$CloudWatchIMG()\nNotification Queue\nMonitoring" as CW << Monitoring >>
+participant "$ApplicationAutoScaling2IMG()\nNotification Consumer\nAuto-Scaling" as AAS << Auto-Scaling >>
+participant "$ElasticContainerServiceIMG()\nAWS ECS Service" as ECS << ECS >>
+participant "$ContainersIMG()\nNotification Consumer\nTask Instance(s)" as Consumer << ECS >>
+
+
+Publisher -> SQS : Send Notification Event
+CW -> SQS : Monitor Queue Depth\n(ApproximateNumberOfMessagesVisible)
+
+alt High_Threshold
+
+    CW -> CW : Trigger Scale-Out Alarm
+    CW -> AAS : Signal Scale Out
+    AAS -> ECS : Increase Desired Task Count
+    ECS -> Consumer : Launch New Instance(s)
+    Consumer -> SQS : Consume Messages
+
+else Queue Depth < Low Threshold
+
+    CW -> CW : Trigger Scale-In Alarm
+    CW -> AAS : Signal Scale In
+    AAS -> ECS : Decrease Desired Task Count
+    ECS -> Consumer : Terminate Surplus Instance(s)
+
+else Queue Depth Normal
+
+    CW -> CW : Monitor (No Action)
+    Consumer -> SQS : Continue Consuming
+
+end
+
+@enduml
