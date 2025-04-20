@@ -1,0 +1,43 @@
+@startuml
+!define AWSPuml https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v19.0/dist
+!includeurl AWSPuml/AWSCommon.puml
+!includeurl AWSPuml/Containers/all.puml
+!includeurl AWSPuml/ApplicationIntegration/all.puml
+!includeurl AWSPuml/Compute/all.puml
+!includeurl AWSPuml/ManagementGovernance/all.puml
+!includeurl AWSPuml/NetworkingContentDelivery/all.puml
+
+title Chat Service Autoscaling Flow (AWS Icons)
+
+actor "User Traffic" as Traffic
+participant "$ElasticLoadBalancingIMG()\nLoad Balancer\n(ALB/NLB)" as LB << LoadBalancer >>
+participant "$ElasticContainerServiceIMG()\nECS Service\n(Chat)" as ECSService << ECS >>
+collections "$ElasticContainerServiceIMG()\nECS Tasks\n(Chat App)" as ECSTasks << ECS >>
+participant "$CloudWatchIMG()\nCloudWatch\nMetrics & Alarms" as CW << Monitoring >>
+participant "$ApplicationAutoScaling2IMG()\nApplication Auto Scaling" as AAS << Auto-Scaling >>
+
+Traffic -> LB : HTTP Requests / WebSocket Connections
+LB -> ECSTasks : Distribute Traffic
+
+ECSTasks --> CW : Report CPU Utilization
+ECSTasks --> CW : Report Memory Utilization
+ECSTasks --> CW : Report WebSocket Connections (Custom Metric)
+LB --> CW : Report Request Count (ALB)
+
+CW --> CW : Evaluate Metrics vs. Thresholds
+
+alt Metrics Exceed Upper Threshold
+    CW -> AAS : Trigger Scale-Out Alarm
+    AAS -> ECSService : Increase Desired Task Count
+    ECSService -> ECSService : Launch New <$ecs_task>
+    note right of ECSService : ECS provisions and starts new Fargate tasks.
+    LB -> ECSTasks : Register New Tasks
+else Metrics Below Lower Threshold
+    CW -> AAS : Trigger Scale-In Alarm
+    AAS -> ECSService : Decrease Desired Task Count
+    ECSService -> ECSService : Stop Existing <$ecs_task>
+    note right of ECSService : ECS drains connections and stops tasks.
+    LB -> ECSTasks : De-register Stopped Tasks
+end
+
+@enduml
