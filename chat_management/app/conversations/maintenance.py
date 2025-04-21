@@ -21,7 +21,10 @@ router = APIRouter(
     tags=["Maintenance"]
 )
 
-@router.post("/recompute_unread", response_model=RecomputeUnreadResponse, summary="Recompute unread counts for current user", description="Recounts unread messages and fixes user's unread count to ensure consistency.")
+@router.post("/recompute_unread",
+             response_model=RecomputeUnreadResponse,
+             summary="Recompute unread counts for current user",
+             description="Recounts unread messages and fixes user's unread count to ensure consistency.")
 async def recompute_user_unread_counts(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
     conversation_id: Optional[str] = None

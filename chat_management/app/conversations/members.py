@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from firebase_admin import firestore
 
 from .schemas import AddMemberRequest
-from ..dependencies import AuthenticatedUser, get_current_active_user, decode_token
+from ..dependencies import AuthenticatedUser, get_current_active_user, decode_token, verify_conversation_participant
 from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,8 @@ router = APIRouter(
     dependencies=[Depends(decode_token)],
 )
 
-@router.post('/conversations/{conversation_id}/members', status_code=200, tags=tags)
+@router.post('/conversations/{conversation_id}/members', status_code=200, tags=tags,
+             dependencies=[Depends(verify_conversation_participant)])
 async def add_conversation_member(
     conversation_id: str,
     body: AddMemberRequest,
@@ -32,19 +33,11 @@ async def add_conversation_member(
         conversation_ref = firestore_db.collection('conversations').document(conversation_id)
         conversation = conversation_ref.get()
         
-        # Check if conversation exists
-        if not conversation.exists:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
         conversation_data = conversation.to_dict()
         
         # Verify this is a group conversation
         if conversation_data.get('type') != 'group':
             raise HTTPException(status_code=403, detail="This operation is only allowed for group conversations")
-        
-        # Verify current user is a member of the conversation
-        if current_user.phoneNumber not in conversation_data.get('participants', []):
-            raise HTTPException(status_code=403, detail="You are not a member of this conversation")
         
         # Verify current user is an admin of the conversation
         if current_user.phoneNumber not in conversation_data.get('admins', []):

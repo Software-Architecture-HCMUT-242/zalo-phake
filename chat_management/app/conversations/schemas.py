@@ -112,12 +112,28 @@ class MessageType(str, Enum):
     IMAGE = "image"
     VIDEO = "video"
     AUDIO = "audio"
+    FILE = "file"  # Generic file type for other documents
 
 
 class MessageCreate(BaseModel):
     """Request body for creating a new message"""
     content: str
     messageType: str = "text"
+    
+
+class FileInfo(BaseModel):
+    """File metadata for file messages"""
+    filename: str
+    size: int
+    mime_type: str
+    s3_key: str  # S3 object key
+    
+
+class FileMessageCreate(BaseModel):
+    """Request body for creating a new file message"""
+    messageType: str  # One of "image", "video", "audio", or "file"
+    filename: str
+    description: Optional[str] = None
 
 
 class Message(BaseModel):
@@ -127,6 +143,7 @@ class Message(BaseModel):
     messageType: MessageType
     timestamp: datetime
     readBy: List[str]
+    file_info: Optional[FileInfo] = None  # Present only for file-based messages
 
 
 # Define response models for maintenance endpoints

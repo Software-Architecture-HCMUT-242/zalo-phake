@@ -122,7 +122,7 @@ async def mark_message_read(read_data: MessageRead, current_user = Depends(get_c
         )
 
 
-# Endpoint for typing notifications has been moved to app/conversations/messages.py
+# Endpoint for typing notifications has been moved to app/conversations/messages_get.py
 # to avoid duplicate operation IDs and consolidate functionality
 
 

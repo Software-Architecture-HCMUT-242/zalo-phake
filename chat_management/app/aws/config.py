@@ -20,10 +20,18 @@ class AWSConfig(BaseSettings):
     aws_sqs_message_group_id: str = os.environ.get('SQS_MESSAGE_GROUP_ID', 'zalo-phake')
     aws_sqs_max_message_size: int = int(os.environ.get('SQS_MAX_MESSAGE_SIZE', '256000'))  # 256KB
 
+    # S3 Configuration
+    aws_s3_bucket_name: str = os.environ.get('S3_BUCKET_NAME', 'zalo-phake-files')
+    aws_s3_presigned_url_expiration: int = int(os.environ.get('S3_PRESIGNED_URL_EXPIRATION', '3600'))  # 1 hour
+    aws_s3_max_file_size: int = int(os.environ.get('S3_MAX_FILE_SIZE', '100000000'))  # 100MB
+
     # Push Notification Configuration is now handled by the notification_consumer service using Firebase Cloud Messaging (FCM) only
 
     # Lambda Configuration
     aws_lambda_function_name: str = os.environ.get('LAMBDA_FUNCTION_NAME', 'zalo-phake-notification-processor')
+    
+    # Flag to determine if we're in production
+    is_production_environment: bool = os.environ.get('ENVIRONMENT', '').upper() == 'PROD'
 
     def __init__(self, **kwargs):
         """Initialize the AWS configuration and validate settings."""
@@ -34,6 +42,9 @@ class AWSConfig(BaseSettings):
         """Validate that required AWS settings are provided."""
         if not self.aws_sqs_queue_url:
             logger.warning("SQS queue URL is not set. SQS features will be disabled.")
+            
+        if not self.aws_s3_bucket_name:
+            logger.warning("S3 bucket name is not set. File upload features will be disabled.")
 
         # SNS has been replaced with Firebase Cloud Messaging (FCM) for all push notifications
 

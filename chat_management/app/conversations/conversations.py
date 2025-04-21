@@ -12,7 +12,7 @@ from firebase_admin.firestore import FieldFilter
 from .schemas import Conversation, ConversationType, MessagePreview, ConversationResponse, \
     ConversationCreate, ConversationDetail, ConversationMetadataUpdate
 from ..aws.sqs_utils import is_sqs_available, send_to_sqs
-from ..dependencies import AuthenticatedUser, get_current_active_user
+from ..dependencies import AuthenticatedUser, get_current_active_user, verify_conversation_participant
 from ..firebase import firestore_db
 from ..pagination import common_pagination_parameters, PaginationParams, PaginatedResponse
 from ..time_utils import convert_timestamps
@@ -347,7 +347,10 @@ async def create_conversation(
     )
 
 
-@router.get('/conversations/{conversation_id}', response_model=ConversationDetail, tags=tags)
+@router.get('/conversations/{conversation_id}',
+            response_model=ConversationDetail,
+            tags=tags,
+            dependencies=[Depends(verify_conversation_participant)])
 async def get_conversation(
     conversation_id: str,
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)]
@@ -372,17 +375,10 @@ async def get_conversation(
         conversation_ref = firestore_db.collection('conversations').document(conversation_id)
         conversation = conversation_ref.get()
         
-        if not conversation.exists:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
         # Convert to dict and handle timestamps
         conversation_data = conversation.to_dict()
         conversation_data = convert_timestamps(conversation_data)
-        
-        # Check if the user is a participant in this conversation
-        if user_phone_num not in conversation_data.get('participants', []):
-            raise HTTPException(status_code=403, detail="You are not a member of this conversation")
-        
+
         # Determine conversation type
         conv_type = ConversationType.GROUP if conversation_data.get('type') == 'group' else ConversationType.DIRECT
         
@@ -452,7 +448,11 @@ async def get_conversation(
         raise HTTPException(status_code=500, detail="Failed to retrieve conversation details")
 
 
-@router.put('/conversations/{conversation_id}', response_model=ConversationDetail, tags=tags)
+@router.put('/conversations/{conversation_id}',
+            response_model=ConversationDetail,
+            tags=tags,
+            dependencies=[Depends(verify_conversation_participant)]
+            )
 async def update_conversation_metadata(
     conversation_id: str,
     body: ConversationMetadataUpdate,
@@ -478,19 +478,13 @@ async def update_conversation_metadata(
         conversation_ref = firestore_db.collection('conversations').document(conversation_id)
         conversation = conversation_ref.get()
         
-        if not conversation.exists:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
+
         # Convert to dict and handle timestamps
         conversation_data = conversation.to_dict()
         
         # Check if the conversation is a group
         if conversation_data.get('type') != 'group':
             raise HTTPException(status_code=403, detail="This operation is only applicable for group conversations")
-        
-        # Check if the user is a participant in this conversation
-        if user_phone_num not in conversation_data.get('participants', []):
-            raise HTTPException(status_code=403, detail="You are not a member of this conversation")
         
         # Check if the user is an admin
         if user_phone_num not in conversation_data.get('admins', []):
