@@ -23,7 +23,38 @@ class S3Client:
             aws_secret_access_key=settings.aws_secret_access_key,
             **kwargs
         )
+        # Parse allowed file types from configuration string
+        self.allowed_file_types = settings.aws_s3_allowed_file_types.split(',')
         logger.info(f"S3 client initialized with bucket: {settings.aws_s3_bucket_name}")
+        
+    def is_file_type_allowed(self, content_type: str) -> bool:
+        """
+        Check if the file type is allowed based on its MIME type.
+        
+        Args:
+            content_type: MIME type of the file
+            
+        Returns:
+            bool: True if file type is allowed, False otherwise
+        """
+        # If content_type is None or empty, default to octet-stream
+        if not content_type:
+            content_type = "application/octet-stream"
+            
+        # If there are no restrictions, allow all types
+        if not self.allowed_file_types or '*/*' in self.allowed_file_types:
+            return True
+            
+        # Check if the exact MIME type is allowed
+        if content_type in self.allowed_file_types:
+            return True
+            
+        # Check if the MIME type category is allowed (e.g., 'image/*')
+        mime_category = content_type.split('/')[0] + '/*'
+        if mime_category in self.allowed_file_types:
+            return True
+            
+        return False
 
     async def upload_file(self, file_obj: BinaryIO, object_name: Optional[str] = None, content_type: Optional[str] = None) -> str:
         """
@@ -64,7 +95,7 @@ class S3Client:
             logger.error(f"Unexpected error uploading file to S3: {e}")
             raise
 
-    def generate_presigned_url(self, object_name: str, expiration: int = 3600) -> str:
+    def generate_presigned_url(self, object_name: str, expiration: int = None) -> str:
         """
         Generate a presigned URL for an S3 object.
 
@@ -76,6 +107,10 @@ class S3Client:
             str: Presigned URL
         """
         try:
+            # Use default expiration from settings if not provided
+            if expiration is None:
+                expiration = settings.aws_s3_presigned_url_expiration
+                
             logger.debug(f"Generating presigned URL for object: {object_name}")
             url = self.s3.generate_presigned_url(
                 'get_object',
@@ -85,6 +120,13 @@ class S3Client:
                 },
                 ExpiresIn=expiration
             )
+            
+            # Log URL generation (but not the actual URL in production)
+            if settings.is_production_environment:
+                logger.info(f"Generated presigned URL for {object_name} with expiration {expiration}s")
+            else:
+                logger.debug(f"Generated URL: {url}")
+                
             return url
 
         except ClientError as e:

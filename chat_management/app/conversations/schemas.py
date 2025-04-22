@@ -144,6 +144,7 @@ class Message(BaseModel):
     timestamp: datetime
     readBy: List[str]
     file_info: Optional[FileInfo] = None  # Present only for file-based messages
+    file_url: Optional[str] = None  # Pre-signed URL for accessing the file
 
 
 # Define response models for maintenance endpoints

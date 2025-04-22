@@ -12,9 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import BaseQuery
 
-from .schemas import Message, MessageType, MessageCreate
+from .schemas import Message, MessageType, MessageCreate, FileInfo
 from ..aws.sqs_utils import is_sqs_available
+from ..aws.s3_utils import s3_client
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user, verify_conversation_participant
+from ..aws.config import settings
 from ..firebase import firestore_db
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
@@ -40,7 +42,6 @@ tags = ["Messages"]
             dependencies=[Depends(verify_conversation_participant)])
 async def get_conversation_messages(
         conversation_id: str,
-        current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
         pagination: Annotated[PaginationParams, Depends(common_pagination_parameters)]
 ):
     """
@@ -91,14 +92,40 @@ async def get_conversation_messages(
             msg_data = msg.to_dict()
             # Convert Firestore timestamps to datetime objects
             msg_data = convert_timestamps(msg_data)
+            # Get file info if this is a file-based message
+            file_info = None
+            file_url = None
+            message_type = msg_data.get('messageType', MessageType.TEXT)
+            
+            # Generate pre-signed URL for file-based messages
+            if message_type in [MessageType.IMAGE, MessageType.VIDEO, MessageType.AUDIO, MessageType.FILE]:
+                file_info_data = msg_data.get('file_info')
+                if file_info_data:
+                    file_info = FileInfo(
+                        filename=file_info_data.get('filename', ''),
+                        size=file_info_data.get('size', 0),
+                        mime_type=file_info_data.get('mime_type', 'application/octet-stream'),
+                        s3_key=file_info_data.get('s3_key', '')
+                    )
+                    
+                    # Generate pre-signed URL if S3 client is available
+                    if s3_client and file_info.s3_key:
+                        try:
+                            file_url = s3_client.generate_presigned_url(file_info.s3_key)
+                        except Exception as e:
+                            logger.error(f"Error generating presigned URL for {file_info.s3_key}: {str(e)}")
+                            # Continue without URL - client can request it separately if needed
+            
             # Create Message object
             messages.append(Message(
                 messageId=msg.id,
                 senderId=msg_data.get('senderId'),
                 content=msg_data.get('content', ''),
-                messageType=msg_data.get('messageType', MessageType.TEXT),
+                messageType=message_type,
                 timestamp=msg_data.get('timestamp'),
-                readBy=msg_data.get('readBy', [])
+                readBy=msg_data.get('readBy', []),
+                file_info=file_info,
+                file_url=file_url
             ))
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {str(e)}")
@@ -112,3 +139,82 @@ async def get_conversation_messages(
         page=pagination.page,
         size=pagination.size
     )
+
+
+@router.get('/conversations/{conversation_id}/messages/{message_id}/file',
+            tags=tags,
+            dependencies=[Depends(verify_conversation_participant)],
+            description="Get/Refresh a presigned URL for a file attached to a message.")
+async def get_message_file_url(
+        conversation_id: str,
+        message_id: str
+):
+    """
+    Get/Refresh a presigned URL for a file attached to a message.
+    
+    Args:
+        conversation_id: The ID of the conversation
+        message_id: The ID of the message
+        current_user: The authenticated user making the request
+        
+    Returns:
+        dict: File info and presigned URL
+        
+    Raises:
+        404: If the message doesn't exist or doesn't have a file
+        403: If the user is not a participant in the conversation
+    """
+    # Check if S3 client is available
+    if not s3_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="File service is not available"
+        )
+        
+    # Get the message from Firestore
+    message_ref = firestore_db.collection('conversations').document(conversation_id).collection('messages').document(message_id)
+    
+    try:
+        message = await asyncio.to_thread(message_ref.get)
+        if not message.exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message not found"
+            )
+            
+        message_data = message.to_dict()
+        file_info_data = message_data.get('file_info')
+        
+        if not file_info_data or not file_info_data.get('s3_key'):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message does not contain a file"
+            )
+            
+        # Create the FileInfo model
+        file_info = FileInfo(
+            filename=file_info_data.get('filename', ''),
+            size=file_info_data.get('size', 0),
+            mime_type=file_info_data.get('mime_type', 'application/octet-stream'),
+            s3_key=file_info_data.get('s3_key', '')
+        )
+        
+        # Generate a new presigned URL
+        file_url = s3_client.generate_presigned_url(file_info.s3_key)
+        
+        # Return the file info and URL
+        return {
+            "file_info": file_info,
+            "file_url": file_url,
+            "expires_in": settings.aws_s3_presigned_url_expiration
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error getting file URL for message {message_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate file URL"
+        )

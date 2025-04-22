@@ -21,15 +21,14 @@ class AWSConfig(BaseSettings):
     aws_sqs_max_message_size: int = int(os.environ.get('SQS_MAX_MESSAGE_SIZE', '256000'))  # 256KB
 
     # S3 Configuration
-    aws_s3_bucket_name: str = os.environ.get('S3_BUCKET_NAME', 'zalo-phake-files')
+    aws_s3_bucket_name: str = os.environ.get('S3_BUCKET_NAME', 'zalo-phake-test')
     aws_s3_presigned_url_expiration: int = int(os.environ.get('S3_PRESIGNED_URL_EXPIRATION', '3600'))  # 1 hour
-    aws_s3_max_file_size: int = int(os.environ.get('S3_MAX_FILE_SIZE', '100000000'))  # 100MB
+    aws_s3_max_file_size: int = int(os.environ.get('S3_MAX_FILE_SIZE', '25000000'))  # 25MB
+    aws_s3_secure_bucket: bool = os.environ.get('S3_SECURE_BUCKET', 'true').lower() == 'true'  # Enforce private bucket access
+    aws_s3_allowed_file_types: str = os.environ.get('S3_ALLOWED_FILE_TYPES', 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml,video/mp4,video/webm,audio/mp3,audio/ogg,audio/wav,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,application/zip')
 
     # Push Notification Configuration is now handled by the notification_consumer service using Firebase Cloud Messaging (FCM) only
 
-    # Lambda Configuration
-    aws_lambda_function_name: str = os.environ.get('LAMBDA_FUNCTION_NAME', 'zalo-phake-notification-processor')
-    
     # Flag to determine if we're in production
     is_production_environment: bool = os.environ.get('ENVIRONMENT', '').upper() == 'PROD'
 

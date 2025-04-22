@@ -1,0 +1,32 @@
+@startuml
+actor "Client" as client
+participant "FastAPI Backend" as api
+participant "Firebase Firestore" as firestore
+participant "AWS S3" as s3
+participant "Redis PubSub" as redis
+
+client -> api: POST /conversations/{conversation_id}/files
+note right
+  Form data:
+  - messageType: "image", "video", "audio", "file"
+  - file: UploadFile
+  - description: Optional text
+end note
+
+api -> api: Validate user is conversation participant
+api -> api: Validate file type and size
+
+api -> s3: Upload file to S3
+s3 --> api: Return success
+
+api -> s3: Generate presigned URL
+s3 --> api: Return URL (valid for 1 hour)
+
+api -> firestore: Store message with file metadata
+firestore --> api: Confirm storage
+
+api -> redis: Publish new message event
+redis --> api: Confirm publish
+
+api --> client: Return messageId and file_url
+@enduml
