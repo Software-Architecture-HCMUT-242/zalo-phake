@@ -1,9 +1,10 @@
 import json
 import logging
-from .connection import get_redis_config
 from typing import Dict, Any
 
 import redis
+
+from .connection import get_redis_config
 
 logger = logging.getLogger(__name__)
 

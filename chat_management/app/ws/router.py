@@ -5,12 +5,12 @@ from typing import Dict, Any, Optional
 
 from app.phone_utils import is_phone_number, format_phone_number
 from app.service_env import Environment
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, status
-from firebase_admin import firestore, auth
-from firebase_admin.auth import ExpiredIdTokenError, RevokedIdTokenError, InvalidIdTokenError, CertificateFetchError, UserDisabledError
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from firebase_admin import auth
+from firebase_admin.auth import ExpiredIdTokenError, RevokedIdTokenError, InvalidIdTokenError, CertificateFetchError, \
+    UserDisabledError
 
 # ConnectionManager is now imported through get_connection_manager
-from ..dependencies import decode_token
 from ..firebase import firestore_db
 
 logger = logging.getLogger(__name__)

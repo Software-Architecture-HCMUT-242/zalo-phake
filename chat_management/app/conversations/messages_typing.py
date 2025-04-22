@@ -2,12 +2,10 @@ import json
 import logging
 import os
 import socket
-from datetime import datetime, timezone
-from typing import Annotated, List
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..aws.sqs_utils import is_sqs_available
 from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user, verify_conversation_participant
 from ..notifications.service import NotificationService
 from ..redis.connection import get_redis_connection

@@ -3,14 +3,13 @@ import logging
 from pathlib import Path
 from typing import Annotated, Any, Dict
 
+from app.firebase import firestore_db
 from app.phone_utils import is_phone_number, format_phone_number
 from app.service_env import Environment
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
 from firebase_admin import auth
-
-from chat_management.app.firebase import firestore_db
+from pydantic import BaseModel
 
 logging.basicConfig(
     level=logging.INFO,

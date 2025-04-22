@@ -1,26 +1,18 @@
 import asyncio
-import json
 import logging
-import os
-import socket
 import traceback
-import uuid
-from datetime import datetime, timezone
-from typing import Annotated, List
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import BaseQuery
 
-from .schemas import Message, MessageType, MessageCreate, FileInfo
-from ..aws.sqs_utils import is_sqs_available
-from ..aws.s3_utils import s3_client
-from ..dependencies import decode_token, AuthenticatedUser, get_current_active_user, verify_conversation_participant
+from .schemas import Message, MessageType, FileInfo
 from ..aws.config import settings
+from ..aws.s3_utils import s3_client
+from ..dependencies import decode_token, verify_conversation_participant
 from ..firebase import firestore_db
 from ..notifications.service import NotificationService
 from ..pagination import PaginatedResponse, PaginationParams, common_pagination_parameters
-from ..redis.connection import get_redis_connection
 from ..time_utils import convert_timestamps
 from ..ws.router import get_connection_manager
 

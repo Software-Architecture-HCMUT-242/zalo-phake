@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from fastapi import HTTPException, status
-from firebase_admin import firestore
 
 from ..firebase import firestore_db
 

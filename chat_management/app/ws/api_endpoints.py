@@ -6,13 +6,14 @@ import socket
 import time
 import traceback
 
+from fastapi import APIRouter, HTTPException, Depends, status
+from pydantic import BaseModel, Field
+
 from ..dependencies import get_current_active_user
 from ..firebase import firestore_db
 from ..redis.connection import get_redis_connection
 from ..ws.router import is_conversation_participant
 from ..ws.websocket_manager import get_connection_manager
-from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

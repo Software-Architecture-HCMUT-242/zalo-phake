@@ -1,10 +1,9 @@
+import logging
 import uuid
 from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends
-import logging
 from typing import Annotated, Optional
 
+from fastapi import APIRouter
 from fastapi import Depends, HTTPException, Query
 from firebase_admin import firestore
 from firebase_admin.firestore import FieldFilter
@@ -13,11 +12,10 @@ from .schemas import Conversation, ConversationType, MessagePreview, Conversatio
     ConversationCreate, ConversationDetail, ConversationMetadataUpdate
 from ..aws.sqs_utils import is_sqs_available, send_to_sqs
 from ..dependencies import AuthenticatedUser, get_current_active_user, verify_conversation_participant
+from ..dependencies import decode_token
 from ..firebase import firestore_db
 from ..pagination import common_pagination_parameters, PaginationParams, PaginatedResponse
 from ..time_utils import convert_timestamps
-
-from ..dependencies import decode_token
 from ..users.users_db import get_user_info
 
 logger = logging.getLogger(__name__)

@@ -1,16 +1,15 @@
 import logging
-from typing import Annotated, Optional, Dict, List, Any
-from pydantic import BaseModel, Field
+from typing import Annotated, Optional, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from .schemas import RecomputeUnreadResponse, UnreadInconsistency, RepairUnreadResponse
-from ..dependencies import AuthenticatedUser, get_current_active_user, decode_token
 from .unread_utils import (
     recompute_all_user_unread_counts,
     find_inconsistent_unread_counts,
     repair_all_unread_counts
 )
+from ..dependencies import AuthenticatedUser, get_current_active_user, decode_token
 
 logger = logging.getLogger(__name__)
 
