@@ -24,7 +24,6 @@ class FirebaseDB:
         # Dir to key
         # should fix this to use GOOGLE_APPLICATION_CREDENTIALS env https://firebase.google.com/docs/admin/setup#initialize_the_sdk_in_non-google_environments
         self.db_url = "https://zalophake-bf746-default-rtdb.firebaseio.com/"
-        self.root_path = "/"
         self.app = None
         self.db = None
         self.firestore_db = None
