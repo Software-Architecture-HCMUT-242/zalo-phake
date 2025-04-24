@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from fastapi import Depends, HTTPException, Query
 from firebase_admin import firestore
 from firebase_admin.firestore import FieldFilter
+import traceback
 
 from .schemas import Conversation, ConversationType, MessagePreview, ConversationResponse, \
     ConversationCreate, ConversationDetail, ConversationMetadataUpdate
@@ -41,9 +42,10 @@ def get_conversation_name(conversation_data, user_phone_num):
             if not name:
                 name = other_participants[0] # Fallback to ID if no name is found
                 other_participant_info = get_user_info(other_participants[0])
-                other_participant_name = other_participant_info.get('name', '')
-                if other_participant_name:
-                    return other_participant_name  # Use other participant's ID as name
+                if other_participant_info:
+                    other_participant_name = other_participant_info.get('name', '')
+                    if other_participant_name:
+                        return other_participant_name  # Use other participant's ID as name
 
             return name
         case _:
@@ -159,6 +161,7 @@ async def get_conversations(
 
     except Exception as e:
         logger.error(f"Error fetching conversations: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to retrieve conversations")
 
 
