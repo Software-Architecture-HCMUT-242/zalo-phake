@@ -111,6 +111,31 @@ async def handle_status_change(data: Dict[str, Any], connection_manager):
     except Exception as e:
         logger.error(f"Error handling status change event: {str(e)}")
 
+async def handle_message_reaction(data: Dict[str, Any], connection_manager):
+    """
+    Process message reaction events from Redis PubSub
+    
+    Args:
+        data: Reaction data containing conversationId, messageId, userId, and reaction
+        connection_manager: WebSocket connection manager instance
+    """
+    try:
+        conversation_id = data.get('conversationId')
+        message_id = data.get('messageId')
+        user_id = data.get('userId')
+        reaction = data.get('reaction')
+        
+        if not conversation_id or not message_id or not user_id:
+            logger.error(f"Missing required fields in message_reaction event: {data}")
+            return
+            
+        # Forward reaction to all local connections for this conversation
+        await connection_manager.broadcast_to_conversation(data, conversation_id, skip_user_id=user_id)
+        logger.debug(f"Forwarded message reaction in conversation {conversation_id} from user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling message reaction event: {str(e)}")
+
 async def start_pubsub_listener():
     """
     Start the Redis PubSub listener for inter-instance communication
@@ -126,7 +151,8 @@ async def start_pubsub_listener():
         'new_message': handle_new_message,
         'typing': handle_typing,
         'message_read': handle_read_receipt,
-        'user_status_change': handle_status_change
+        'user_status_change': handle_status_change,
+        'message_reaction': handle_message_reaction  # Add the new handler here
     }
     
     # Reconnection parameters

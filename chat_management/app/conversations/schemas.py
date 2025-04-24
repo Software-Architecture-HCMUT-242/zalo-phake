@@ -145,6 +145,18 @@ class Message(BaseModel):
     readBy: List[str]
     file_info: Optional[FileInfo] = None  # Present only for file-based messages
     file_url: Optional[str] = None  # Pre-signed URL for accessing the file
+    reactions: Optional[Dict[str, str]] = None  # Maps user_id to reaction_icon (e.g., {"+84912345678": "👍"})
+
+
+class MessageReactionRequest(BaseModel):
+    """Request body for adding, updating, or removing a reaction to a message"""
+    reaction: Optional[str] = None  # Null or empty string to remove reaction, emoji string to add/update
+
+
+class MessageReactionResponse(BaseModel):
+    """Response for a message reaction operation"""
+    messageId: str
+    reactions: Dict[str, str]  # The complete, updated map of reactions for the message
 
 
 # Define response models for maintenance endpoints
