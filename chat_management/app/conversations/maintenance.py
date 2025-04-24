@@ -1,16 +1,15 @@
 import logging
-from typing import Annotated, Optional, Dict, List, Any
-from pydantic import BaseModel, Field
+from typing import Annotated, Optional, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from .schemas import RecomputeUnreadResponse, UnreadInconsistency, RepairUnreadResponse
-from ..dependencies import AuthenticatedUser, get_current_active_user, decode_token
 from .unread_utils import (
     recompute_all_user_unread_counts,
     find_inconsistent_unread_counts,
     repair_all_unread_counts
 )
+from ..dependencies import AuthenticatedUser, get_current_active_user, decode_token
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,10 @@ router = APIRouter(
     tags=["Maintenance"]
 )
 
-@router.post("/recompute_unread", response_model=RecomputeUnreadResponse, summary="Recompute unread counts for current user", description="Recounts unread messages and fixes user's unread count to ensure consistency.")
+@router.post("/recompute_unread",
+             response_model=RecomputeUnreadResponse,
+             summary="Recompute unread counts for current user",
+             description="Recounts unread messages and fixes user's unread count to ensure consistency.")
 async def recompute_user_unread_counts(
     current_user: Annotated[AuthenticatedUser, Depends(get_current_active_user)],
     conversation_id: Optional[str] = None

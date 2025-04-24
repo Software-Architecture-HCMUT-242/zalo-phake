@@ -1,6 +1,6 @@
-import re
-import phonenumbers
 import logging
+
+import phonenumbers
 
 logger = logging.getLogger(__name__)
 

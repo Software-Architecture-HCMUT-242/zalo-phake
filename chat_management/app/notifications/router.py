@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Annotated, List
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from firebase_admin import firestore

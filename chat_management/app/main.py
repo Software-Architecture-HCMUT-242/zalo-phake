@@ -1,20 +1,19 @@
+import asyncio
 import logging
 import os
-import asyncio
 
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import firestore
 
 from .config import get_prefix
-from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
-
 from .conversations import all_router as conversations_routers
-from .notifications.router import router as notifications_router
-from .ws.router import router as ws_router
-from .ws.api_endpoints import router as ws_api_router
-from .redis.pubsub import start_pubsub_listener
 from .dependencies import decode_token
 from .firebase import firestore_db
+from .notifications.router import router as notifications_router
+from .redis.pubsub import start_pubsub_listener
+from .ws.api_endpoints import router as ws_api_router
+from .ws.router import router as ws_router
 
 # import all you need from fastapi-pagination
 

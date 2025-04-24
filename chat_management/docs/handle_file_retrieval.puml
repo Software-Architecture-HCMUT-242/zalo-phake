@@ -1,0 +1,23 @@
+@startuml
+actor "Client" as client
+participant "FastAPI Backend" as api
+participant "Firebase Firestore" as firestore
+participant "AWS S3" as s3
+
+client -> api: GET /conversations/{conversation_id}/messages
+api -> api: Validate user is conversation participant
+api -> firestore: Fetch messages
+firestore --> api: Return messages data
+
+loop for each file message
+  api -> s3: Generate presigned URL
+  s3 --> api: Return URL
+end
+
+api --> client: Return messages with file URLs
+
+note right of client
+  If URL expires, client can request a new one:
+  GET /conversations/{conversation_id}/messages/{message_id}/file
+end note
+@enduml

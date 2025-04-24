@@ -1,14 +1,12 @@
 import asyncio
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
+from .schemas import NotificationEvent, NotificationRecipient, DeliveryChannel
 from ..aws import sqs_utils
-from ..aws.config import settings
 from ..firebase import firestore_db
-from .schemas import NotificationEvent, NotificationRecipient, DeliveryChannel, NotificationType
 
 logger = logging.getLogger(__name__)
 
