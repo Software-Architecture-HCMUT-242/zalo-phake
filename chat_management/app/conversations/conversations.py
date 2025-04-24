@@ -18,6 +18,7 @@ from ..firebase import firestore_db
 from ..pagination import common_pagination_parameters, PaginationParams, PaginatedResponse
 from ..time_utils import convert_timestamps
 from ..users.users_db import get_user_info
+from ..phone_utils import is_phone_number, format_phone_number
 
 logger = logging.getLogger(__name__)
 
@@ -202,9 +203,13 @@ async def create_conversation(
     if body.type == ConversationType.GROUP and len(body.participants) < 2:
         raise HTTPException(status_code=400, detail="Group conversations must have at least 2 participants")
 
+    for participant in body.participants:
+        if not is_phone_number(participant):
+            raise HTTPException(status_code=400, detail=f"Invalid phone number format: {participant}")
+
     # Sort participants for direct conversations to ensure consistency
     if body.type == ConversationType.DIRECT:
-        sorted_participants = sorted(body.participants)
+        sorted_participants = [format_phone_number(p) for p in sorted(body.participants)]
 
         # Check if a direct conversation already exists between these participants
         conversations_ref = firestore_db.collection('conversations')
