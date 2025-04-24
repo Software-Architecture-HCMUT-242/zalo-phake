@@ -5,6 +5,7 @@ from .messages_get import router as messages_get
 from .messages_read import router as messages_read
 from .messages_send import router as messages_send
 from .messages_typing import router as messages_typing
+from .messages_reactions import router as messages_reactions
 
 all_router = [
     conversations,
@@ -14,4 +15,5 @@ all_router = [
     messages_send,
     messages_typing,
     messages_read,
+    messages_reactions,
 ]
