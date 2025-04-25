@@ -117,7 +117,8 @@ async def get_conversation_messages(
                 timestamp=msg_data.get('timestamp'),
                 readBy=msg_data.get('readBy', []),
                 file_info=file_info,
-                file_url=file_url
+                file_url=file_url,
+                reactions= msg_data.get('reactions', {})
             ))
         except Exception as e:
             logger.error(f"Error processing message {msg.id}: {str(e)}")
