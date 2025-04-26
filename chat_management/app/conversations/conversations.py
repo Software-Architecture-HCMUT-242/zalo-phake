@@ -28,30 +28,32 @@ router = APIRouter(
 )
 tags = ["Conversations"]
 
-def get_conversation_name(conversation_data, user_phone_num):
+def get_conversation_metadata(conversation_data, user_phone_num):
     """
     Helper function to get the conversation name based on the type and participants.
     """
     match conversation_data.get('type'):
         case 'group':
-            return conversation_data.get('name', '')
+            return conversation_data.get('name', ''), conversation_data.get('avatar_url', '')
         case 'direct':
             participants = conversation_data.get('participants', [])
             # Filter out current user to get the other participant
             other_participants = [p for p in participants if p != user_phone_num]
             name = conversation_data.get('name', '')
+            avatar_url = conversation_data.get('avatar_url', '')
             if not name:
                 name = other_participants[0] # Fallback to ID if no name is found
                 other_participant_info = get_user_info(other_participants[0])
                 if other_participant_info:
                     other_participant_name = other_participant_info.get('name', '')
+                    avatar_url = other_participant_info.get('profile_pic', '')
                     if other_participant_name:
-                        return other_participant_name  # Use other participant's ID as name
+                        return other_participant_name, avatar_url  # Use other participant's ID as name
 
-            return name
+            return name, avatar_url
         case _:
             logger.warning(f"Unknown conversation type: {conversation_data.get('type')}")
-            return ''  # Default case, should not happen if type is validated before
+            return '', ''  # Default case, should not happen if type is validated before
 
 
 @router.get('/conversations', response_model=PaginatedResponse[Conversation], tags=tags)
@@ -114,7 +116,7 @@ async def get_conversations(
             conv_type = ConversationType.GROUP if conv_data.get('type') == 'group' else ConversationType.DIRECT
 
             # For direct chats, set the name to the other participant's name/number
-            name = get_conversation_name(conv_data, user_phone_num)
+            name, avatar_url = get_conversation_metadata(conv_data, user_phone_num)
 
             # Get last message preview
             last_message = None
@@ -146,7 +148,8 @@ async def get_conversations(
                 unread_count=unread_count,
                 updated_at=conv_data.get('lastMessageTime', conv_data.get('createdTime')),
                 members=conv_data.get('participants', []),
-                avatar_url=conv_data.get('avatarUrl'),
+                avatar_url=avatar_url,
+                profile_pic=avatar_url,
                 is_muted=conv_data.get('mutedBy', []).count(user_phone_num) > 0
             )
 

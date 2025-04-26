@@ -37,6 +37,7 @@ class Conversation(BaseModel):
     updated_at: datetime
     members: List[str] = []
     avatar_url: Optional[str] = None
+    profile_pic: Optional[str] = None
     is_muted: bool = False
 
 
